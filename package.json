@@ -1,0 +1,31 @@
+{
+  "name": "vibe-coding-companion-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "dev:all": "node scripts/dev-all.js",
+    "event-server": "node scripts/event-server.js",
+    "emit:event": "node scripts/emit-event.js",
+    "emit:hook": "node scripts/emit-hook.js",
+    "setup:hooks": "node scripts/setup-hooks.js",
+    "overlay": "electron scripts/overlay-main.js",
+    "companion:setup-key": "node scripts/companion.js setup-key",
+    "companion:start": "node scripts/companion.js start",
+    "companion:stop": "node scripts/companion.js stop",
+    "live:codex": "node scripts/live-capture.js codex",
+    "live:claude": "node scripts/live-capture.js claude-code",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "verify": "npm test && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.0",
+    "electron": "^42.4.0",
+    "jsdom": "^25.0.1",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
+  }
+}

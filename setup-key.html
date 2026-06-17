@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vibe Companion API Key</title>
+    <link rel="stylesheet" href="/src/setup-key.css" />
+  </head>
+  <body>
+    <main id="setup"></main>
+    <script type="module">
+      import { mountSetupKeyPage } from "/src/setup-key.js";
+
+      const eventUrl = import.meta.env.VITE_COMPANION_EVENT_URL;
+      const eventBaseUrl = eventUrl?.replace(/\/events$/, "");
+
+      mountSetupKeyPage(document.querySelector("#setup"), {
+        endpoint: eventBaseUrl ? `${eventBaseUrl}/settings/google-ai-key` : undefined,
+        statusEndpoint: eventBaseUrl ? `${eventBaseUrl}/settings/status` : undefined,
+        eventsEndpoint: eventUrl,
+        sessionSummaryEndpoint: eventBaseUrl ? `${eventBaseUrl}/session/summary` : undefined,
+        overlaySettingsEndpoint: eventBaseUrl ? `${eventBaseUrl}/settings/overlay` : undefined,
+        visionEndpoint: eventBaseUrl ? `${eventBaseUrl}/vision/context` : undefined,
+        placementDiagnosticEndpoint: eventBaseUrl
+          ? `${eventBaseUrl}/placement/diagnostic`
+          : undefined,
+      });
+    </script>
+  </body>
+</html>

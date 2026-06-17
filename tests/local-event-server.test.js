@@ -1,0 +1,497 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createLocalEventServer } from "../src/local-event-server.js";
+
+const servers = [];
+
+afterEach(async () => {
+  while (servers.length > 0) {
+    await servers.pop().close();
+  }
+});
+
+describe("Local event server", () => {
+  it("accepts observable events over HTTP and returns events since a cursor", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "tool:finish",
+        tool: "test",
+        status: "failed",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ accepted: true, id: 1 });
+
+    const eventsResponse = await fetch(`${server.url()}/events?since=0`);
+
+    expect(eventsResponse.status).toBe(200);
+    expect(await eventsResponse.json()).toEqual({
+      events: [
+        {
+          id: 1,
+          event: {
+            type: "tool:finish",
+            tool: "test",
+            status: "failed",
+          },
+        },
+      ],
+    });
+  });
+
+  it("clears captured events so tests and live sessions can start isolated", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "prompt:submitted" }),
+    });
+
+    const resetResponse = await fetch(`${server.url()}/events`, {
+      method: "DELETE",
+    });
+
+    expect(resetResponse.status).toBe(200);
+    expect(await resetResponse.json()).toEqual({ cleared: true });
+
+    const eventsResponse = await fetch(`${server.url()}/events?since=0`);
+
+    expect(await eventsResponse.json()).toEqual({ events: [] });
+  });
+
+  it("allows browser console controls to clear events through CORS preflight", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await fetch(`${server.url()}/events`, {
+      method: "OPTIONS",
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-methods")).toContain(
+      "DELETE"
+    );
+  });
+
+  it("keeps event ids monotonic after clearing so active pollers do not miss new events", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "tool:start", tool: "test" }),
+    });
+    await fetch(`${server.url()}/events`, { method: "DELETE" });
+
+    const response = await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "tool:start", tool: "edit" }),
+    });
+
+    expect(await response.json()).toEqual({ accepted: true, id: 2 });
+
+    const eventsResponse = await fetch(`${server.url()}/events?since=1`);
+
+    expect(await eventsResponse.json()).toEqual({
+      events: [
+        {
+          id: 2,
+          event: { type: "tool:start", tool: "edit" },
+        },
+      ],
+    });
+  });
+
+  it("summarizes captured session events through a local-only endpoint", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    for (const event of [
+      { type: "prompt:submitted" },
+      { type: "tool:start", tool: "read" },
+      { type: "tool:start", tool: "edit" },
+      { type: "tool:finish", tool: "test", status: "failed" },
+      { type: "ai:decision", state: "debugging" },
+    ]) {
+      await fetch(`${server.url()}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(event),
+      });
+    }
+
+    const response = await fetch(`${server.url()}/session/summary`);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      summary: {
+        title: "正在修測試失敗",
+        phase: "debugging",
+        summary: "你剛讀過脈絡、改過程式，測試目前仍失敗。",
+        signals: ["read x1", "edit x1", "test failed x1"],
+        confidence: "high",
+      },
+    });
+  });
+
+  it("appends an AI decision event after accepting a raw companion event", async () => {
+    const classifyEvent = vi.fn(async () => ({
+      state: "debugging",
+      intensity: "high",
+      motion: "panic",
+      line: "Tests are being dramatic.",
+    }));
+    const server = createLocalEventServer({ classifyEvent });
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "tool:finish",
+        tool: "test",
+        status: "failed",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ accepted: true, id: 1 });
+
+    await waitFor(async () => {
+      const eventsResponse = await fetch(`${server.url()}/events?since=0`);
+      const payload = await eventsResponse.json();
+
+      expect(payload.events).toEqual([
+        {
+          id: 1,
+          event: {
+            type: "tool:finish",
+            tool: "test",
+            status: "failed",
+          },
+        },
+        {
+          id: 2,
+          event: {
+            type: "ai:decision",
+            sourceEventId: 1,
+            state: "debugging",
+            intensity: "high",
+            motion: "panic",
+            line: "Tests are being dramatic.",
+            skillHint: {
+              skill: "diagnose",
+              confidence: "high",
+              reason: "適合重現、定位並修復 bug 或測試失敗。",
+            },
+            nextStepAdvice: {
+              title: "下一步可用 diagnose",
+              action: "適合重現、定位並修復 bug 或測試失敗。",
+              reason: "目前狀態是 debugging。",
+              skill: "diagnose",
+              priority: "medium",
+              speakable: false,
+            },
+          },
+        },
+      ]);
+    });
+    expect(classifyEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: {
+          type: "tool:finish",
+          tool: "test",
+          status: "failed",
+        },
+        fallbackState: "error",
+      })
+    );
+  });
+
+  it("saves a Google AI Studio key through a local-only settings endpoint without echoing it", async () => {
+    const saveGoogleAiStudioKey = vi.fn(async () => {});
+    const server = createLocalEventServer({ saveGoogleAiStudioKey });
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await fetch(`${server.url()}/settings/google-ai-key`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ apiKey: "new-google-key" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      saved: true,
+      provider: "google",
+      model: "gemma-4-31b-it",
+    });
+    expect(saveGoogleAiStudioKey).toHaveBeenCalledWith({
+      apiKey: "new-google-key",
+      model: "gemma-4-31b-it",
+    });
+  });
+
+  it("reports companion settings status without exposing the API key", async () => {
+    const server = createLocalEventServer({
+      getSettingsStatus: () => ({
+        aiConfigured: true,
+        provider: "google",
+        model: "gemma-4-31b-it",
+      }),
+    });
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await fetch(`${server.url()}/settings/status`);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      aiConfigured: true,
+      provider: "google",
+      model: "gemma-4-31b-it",
+    });
+  });
+
+  it("reads and saves overlay calibration settings through local-only endpoints", async () => {
+    const getOverlaySettings = vi.fn(async () => ({
+      idleSize: 76,
+      activeScale: 1,
+      wanderSpeed: 1,
+      safeMargin: 24,
+    }));
+    const saveOverlaySettings = vi.fn(async (settings) => ({
+      ...settings,
+      idleSize: 88,
+    }));
+    const server = createLocalEventServer({
+      getOverlaySettings,
+      saveOverlaySettings,
+    });
+    servers.push(server);
+    await server.listen(0);
+
+    const getResponse = await fetch(`${server.url()}/settings/overlay`);
+    expect(await getResponse.json()).toEqual({
+      settings: {
+        idleSize: 76,
+        activeScale: 1,
+        wanderSpeed: 1,
+        safeMargin: 24,
+      },
+    });
+
+    const postResponse = await fetch(`${server.url()}/settings/overlay`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        idleSize: 200,
+        activeScale: 1.2,
+        wanderSpeed: 1.4,
+        safeMargin: 32,
+      }),
+    });
+
+    expect(postResponse.status).toBe(200);
+    expect(await postResponse.json()).toEqual({
+      saved: true,
+      settings: {
+        idleSize: 88,
+        activeScale: 1.2,
+        wanderSpeed: 1.4,
+        safeMargin: 32,
+      },
+    });
+    expect(saveOverlaySettings).toHaveBeenCalledWith({
+      idleSize: 200,
+      activeScale: 1.2,
+      wanderSpeed: 1.4,
+      safeMargin: 32,
+    });
+  });
+
+  it("reports placement diagnostics through a local-only endpoint", async () => {
+    const getPlacementDiagnostic = vi.fn(async ({ state, safeZone }) => ({
+      ok: true,
+      state,
+      safeZone,
+      placementMode: "geometry-fallback",
+      foreground: {
+        appName: "Codex",
+        windowTitle: "Codex",
+        visible: true,
+        bounds: { x: 15, y: 47, width: 1423, height: 807 },
+      },
+      accessibility: { regionCount: 0, status: "empty" },
+      avoidRegionCount: 3,
+      chosenBounds: { x: 27, y: 354, width: 132, height: 156 },
+    }));
+    const server = createLocalEventServer({ getPlacementDiagnostic });
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await fetch(
+      `${server.url()}/placement/diagnostic?state=coding&safeZone=bottom-right`
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      state: "coding",
+      safeZone: "bottom-right",
+      placementMode: "geometry-fallback",
+      foreground: {
+        appName: "Codex",
+        windowTitle: "Codex",
+        visible: true,
+        bounds: { x: 15, y: 47, width: 1423, height: 807 },
+      },
+      accessibility: { regionCount: 0, status: "empty" },
+      avoidRegionCount: 3,
+      chosenBounds: { x: 27, y: 354, width: 132, height: 156 },
+    });
+    expect(getPlacementDiagnostic).toHaveBeenCalledWith({
+      state: "coding",
+      safeZone: "bottom-right",
+      settingsOverride: {},
+    });
+  });
+
+  it("passes preferred side preview overrides to placement diagnostics", async () => {
+    const getPlacementDiagnostic = vi.fn(async () => ({
+      ok: true,
+      state: "coding",
+      safeZone: "right-edge",
+      placementMode: "geometry-fallback",
+      foreground: { appName: "Codex", visible: true },
+      accessibility: { regionCount: 0, status: "empty" },
+      avoidRegionCount: 3,
+      chosenBounds: { x: 108, y: 333, width: 132, height: 156 },
+    }));
+    const server = createLocalEventServer({ getPlacementDiagnostic });
+    servers.push(server);
+    await server.listen(0);
+
+    await fetch(
+      `${server.url()}/placement/diagnostic?state=coding&safeZone=right-edge&preferredSide=left`
+    );
+
+    expect(getPlacementDiagnostic).toHaveBeenCalledWith({
+      state: "coding",
+      safeZone: "right-edge",
+      settingsOverride: { preferredSide: "left" },
+    });
+  });
+
+  it("analyzes a user-approved screenshot without echoing the image payload", async () => {
+    const analyzeVisionContext = vi.fn(async () => ({
+      activity: "Looking at Codex test output.",
+      suggestedState: "testing",
+      confidence: 0.74,
+      visibleSignals: ["terminal", "test output"],
+    }));
+    const server = createLocalEventServer({ analyzeVisionContext });
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await fetch(`${server.url()}/vision/context`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        imageDataUrl: "data:image/png;base64,ZmFrZQ==",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      context: {
+        activity: "Looking at Codex test output.",
+        suggestedState: "testing",
+        confidence: 0.74,
+        visibleSignals: ["terminal", "test output"],
+      },
+    });
+    expect(analyzeVisionContext).toHaveBeenCalledWith({
+      imageDataUrl: "data:image/png;base64,ZmFrZQ==",
+    });
+  });
+
+  it("publishes a vision context decision event for overlay pollers", async () => {
+    const analyzeVisionContext = vi.fn(async () => ({
+      activity: "Reviewing a failed test panel in Codex.",
+      suggestedState: "error",
+      confidence: 0.86,
+      visibleSignals: ["failed test", "Codex panel"],
+      safeZone: "bottom-right",
+    }));
+    const server = createLocalEventServer({ analyzeVisionContext });
+    servers.push(server);
+    await server.listen(0);
+
+    await fetch(`${server.url()}/vision/context`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        imageDataUrl: "data:image/png;base64,ZmFrZQ==",
+      }),
+    });
+
+    const eventsResponse = await fetch(`${server.url()}/events?since=0`);
+    const payload = await eventsResponse.json();
+
+    expect(payload.events).toEqual([
+      {
+        id: 1,
+        event: {
+          type: "ai:decision",
+          source: "vision:context",
+          state: "error",
+          intensity: "high",
+          motion: "panic",
+          line: "Reviewing a failed test panel in Codex.",
+          visibleSignals: ["failed test", "Codex panel"],
+          safeZone: "bottom-right",
+          skillHint: {
+            skill: "diagnose",
+            confidence: "high",
+            reason: "適合重現、定位並修復 bug 或測試失敗。",
+          },
+        },
+      },
+    ]);
+    expect(JSON.stringify(payload.events)).not.toContain("ZmFrZQ==");
+  });
+});
+
+async function waitFor(assertion, timeoutMs = 250) {
+  const start = Date.now();
+  let lastError;
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      await assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+
+  throw lastError;
+}

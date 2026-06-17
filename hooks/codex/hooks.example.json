@@ -1,0 +1,56 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "HOOK_OUTPUT=json node \"$(git rev-parse --show-toplevel)/scripts/emit-hook.js\" codex -",
+            "timeout": 5,
+            "statusMessage": "Updating Vibe Companion"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch|Read|Grep|Glob|Edit|Write|MultiEdit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "HOOK_OUTPUT=json node \"$(git rev-parse --show-toplevel)/scripts/emit-hook.js\" codex -",
+            "timeout": 5,
+            "statusMessage": "Updating Vibe Companion"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "HOOK_OUTPUT=json node \"$(git rev-parse --show-toplevel)/scripts/emit-hook.js\" codex -",
+            "timeout": 5,
+            "statusMessage": "Updating Vibe Companion"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "HOOK_OUTPUT=json node \"$(git rev-parse --show-toplevel)/scripts/emit-hook.js\" codex -",
+            "timeout": 5,
+            "statusMessage": "Updating Vibe Companion"
+          }
+        ]
+      }
+    ]
+  }
+}

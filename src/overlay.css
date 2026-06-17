@@ -1,0 +1,191 @@
+:root {
+  color-scheme: dark;
+  --ink: #edf7f5;
+  --muted: rgba(237, 247, 245, 0.64);
+  --line: rgba(174, 255, 226, 0.2);
+  --glass: rgba(5, 14, 17, 0.48);
+  --cyan: #8df8ff;
+  --mint: #89ffc1;
+  --amber: #ffd36f;
+  --rose: #ff7d99;
+  --violet: #c7a2ff;
+  font-family:
+    "SF Mono", "Cascadia Code", "Menlo", "Monaco", ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#overlay {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  color: var(--ink);
+  user-select: none;
+}
+
+.codex-overlay {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+}
+
+.overlay-drag-strip {
+  display: none;
+}
+
+.overlay-drag-strip {
+  position: absolute;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.overlay-drag-strip {
+  top: 10px;
+  left: 12px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  min-height: 28px;
+  grid-template-columns: 10px max-content 22px;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 5px;
+  background: rgba(5, 14, 17, 0.18);
+  -webkit-app-region: drag;
+}
+
+.overlay-close {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  border: 0;
+  color: var(--rose);
+  background: rgba(255, 125, 153, 0.12);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.overlay-close:hover {
+  background: rgba(255, 125, 153, 0.22);
+}
+
+.state-label {
+  min-width: 0;
+  color: var(--cyan);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+}
+
+.status-light {
+  width: 10px;
+  height: 10px;
+  border: 0;
+  background: #7f8f91;
+  box-shadow: 0 0 18px rgba(127, 143, 145, 0.45);
+}
+
+.status-light[data-tone="running"] {
+  background: var(--amber);
+  box-shadow: 0 0 20px rgba(255, 211, 111, 0.56);
+}
+
+.status-light[data-tone="blocked"] {
+  background: var(--rose);
+  box-shadow: 0 0 20px rgba(255, 125, 153, 0.56);
+}
+
+.status-light[data-tone="done"] {
+  background: var(--mint);
+  box-shadow: 0 0 20px rgba(137, 255, 193, 0.56);
+}
+
+.status-light[data-tone="waiting"] {
+  background: var(--violet);
+  box-shadow: 0 0 20px rgba(199, 162, 255, 0.56);
+}
+
+[data-character-canvas] {
+  width: min(var(--active-canvas-size, 118px), calc(100vw - 20px), calc(100vh - 44px));
+  height: min(var(--active-canvas-size, 118px), calc(100vw - 20px), calc(100vh - 44px));
+  image-rendering: pixelated;
+  filter:
+    drop-shadow(0 18px 20px rgba(0, 0, 0, 0.34))
+    drop-shadow(0 0 20px rgba(137, 255, 193, 0.14));
+}
+
+.dialogue-bubble {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 2;
+  width: max-content;
+  max-width: min(178px, calc(100% - 18px));
+  margin: 0;
+  padding: 5px 7px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(141, 248, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(5, 14, 17, 0.58);
+  color: #f7fffb;
+  font-size: 9px;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-align: center;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.78);
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+
+.dialogue-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 7px;
+  height: 7px;
+  transform: translateX(-50%) rotate(45deg);
+  border-right: 1px solid rgba(141, 248, 255, 0.2);
+  border-bottom: 1px solid rgba(141, 248, 255, 0.2);
+  background: rgba(5, 14, 17, 0.68);
+}
+
+.dialogue-bubble[hidden],
+.codex-overlay[data-overlay-state="idle"] .dialogue-bubble,
+.codex-overlay[data-overlay-state="waiting"] .dialogue-bubble {
+  display: none;
+}
+
+.codex-overlay[data-overlay-state="idle"] [data-character-canvas],
+.codex-overlay[data-overlay-state="waiting"] [data-character-canvas] {
+  width: min(var(--idle-canvas-size, 64px), calc(100vw - 6px), calc(100vh - 6px));
+  height: min(var(--idle-canvas-size, 64px), calc(100vw - 6px), calc(100vh - 6px));
+}
+
+@media (max-height: 310px), (max-width: 240px) {
+  .codex-overlay {
+    padding-bottom: 8px;
+  }
+}

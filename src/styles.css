@@ -1,0 +1,326 @@
+:root {
+  color-scheme: dark;
+  --ink: #edf7f5;
+  --muted: #9fb4b0;
+  --panel: rgba(9, 18, 22, 0.74);
+  --panel-strong: rgba(11, 25, 31, 0.9);
+  --line: rgba(174, 255, 226, 0.22);
+  --cyan: #8df8ff;
+  --mint: #89ffc1;
+  --amber: #ffd36f;
+  --rose: #ff7d99;
+  --violet: #c7a2ff;
+  font-family:
+    "SF Mono", "Cascadia Code", "Menlo", "Monaco", ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--ink);
+  background:
+    linear-gradient(rgba(10, 18, 21, 0.76), rgba(10, 18, 21, 0.82)),
+    repeating-linear-gradient(
+      180deg,
+      rgba(141, 248, 255, 0.08) 0,
+      rgba(141, 248, 255, 0.08) 1px,
+      transparent 1px,
+      transparent 30px
+    ),
+    #081014;
+  overflow: hidden;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 26px;
+  border: 1px solid rgba(141, 248, 255, 0.16);
+  background:
+    linear-gradient(90deg, rgba(141, 248, 255, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(137, 255, 193, 0.08), transparent 42%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+#app {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.companion {
+  width: min(420px, calc(100vw - 20px));
+  min-height: min(640px, calc(100vh - 20px));
+  max-height: calc(100vh - 20px);
+  display: grid;
+  grid-template-rows: auto minmax(180px, 1fr) auto auto auto minmax(130px, auto);
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 36%),
+    var(--panel);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(18px);
+  overflow: auto;
+}
+
+.topbar,
+.hud,
+.debug-panel {
+  border: 1px solid var(--line);
+  background: rgba(6, 16, 19, 0.62);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.eyebrow,
+.state-label,
+.meter-label,
+.debug-panel h2 {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.state-label {
+  color: var(--cyan);
+  text-transform: uppercase;
+}
+
+.character-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  border: 1px solid rgba(137, 255, 193, 0.16);
+  background:
+    radial-gradient(circle at 50% 48%, rgba(137, 255, 193, 0.12), transparent 30%),
+    rgba(2, 8, 10, 0.28);
+  cursor: grab;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.character-stage:active {
+  cursor: grabbing;
+}
+
+.character-stage canvas {
+  width: 220px;
+  height: 220px;
+  image-rendering: pixelated;
+  transform-origin: center;
+}
+
+.status-row {
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 0 2px;
+}
+
+.status-light {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  background: #7f8f91;
+  box-shadow: 0 0 18px rgba(127, 143, 145, 0.45);
+}
+
+.status-light[data-tone="running"] {
+  background: var(--amber);
+  box-shadow: 0 0 20px rgba(255, 211, 111, 0.56);
+}
+
+.status-light[data-tone="blocked"] {
+  background: var(--rose);
+  box-shadow: 0 0 20px rgba(255, 125, 153, 0.56);
+}
+
+.status-light[data-tone="done"] {
+  background: var(--mint);
+  box-shadow: 0 0 20px rgba(137, 255, 193, 0.56);
+}
+
+.status-light[data-tone="waiting"] {
+  background: var(--violet);
+  box-shadow: 0 0 20px rgba(199, 162, 255, 0.56);
+}
+
+.status-line {
+  margin: 0;
+  min-height: 18px;
+  font-size: 13px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vibe-meter {
+  display: grid;
+  gap: 6px;
+}
+
+.meter-top {
+  display: flex;
+  justify-content: space-between;
+}
+
+.meter-track {
+  height: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.meter-fill {
+  width: var(--vibe, 62%);
+  height: 100%;
+  background: linear-gradient(90deg, var(--rose), var(--amber), var(--mint));
+}
+
+.hud {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.mode-control {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+button {
+  min-height: 34px;
+  border: 1px solid rgba(141, 248, 255, 0.24);
+  color: var(--ink);
+  background: rgba(141, 248, 255, 0.08);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+button:hover,
+button[aria-pressed="true"] {
+  border-color: rgba(141, 248, 255, 0.62);
+  background: rgba(141, 248, 255, 0.18);
+}
+
+.start-button {
+  border-color: rgba(137, 255, 193, 0.42);
+  background: rgba(137, 255, 193, 0.12);
+}
+
+.debug-panel {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  max-height: 210px;
+  overflow: auto;
+}
+
+.debug-panel label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.state-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.event-bridge {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(174, 255, 226, 0.14);
+}
+
+.event-bridge h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.event-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.event-grid button {
+  min-height: 30px;
+  font-size: 11px;
+  border-color: rgba(199, 162, 255, 0.24);
+  background: rgba(199, 162, 255, 0.08);
+}
+
+.event-last {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--mint);
+}
+
+@media (max-height: 560px) {
+  .companion {
+    min-height: auto;
+    grid-template-rows: auto 160px auto auto auto minmax(110px, auto);
+  }
+
+  .character-stage {
+    min-height: 160px;
+  }
+
+  .debug-panel {
+    max-height: 130px;
+    overflow: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  #app {
+    padding: 8px;
+  }
+
+  .companion {
+    min-height: calc(100vh - 16px);
+    max-height: calc(100vh - 16px);
+    grid-template-rows: auto minmax(150px, 0.8fr) auto auto auto minmax(118px, auto);
+    padding: 10px;
+  }
+
+  .character-stage {
+    min-height: 150px;
+  }
+
+  .debug-panel {
+    max-height: 124px;
+  }
+}
