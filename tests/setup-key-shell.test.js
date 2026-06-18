@@ -37,6 +37,37 @@ describe("Google AI Studio key setup page", () => {
     );
   });
 
+  it("shows an actionable runtime readiness checklist when local services are not ready", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (url.endsWith("/settings/status")) {
+        throw new Error("server_not_running");
+      }
+
+      if (url.endsWith("/settings/overlay")) {
+        throw new Error("overlay_settings_unavailable");
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    document.body.innerHTML = '<main id="setup"></main>';
+
+    mountSetupKeyPage(document.querySelector("#setup"), { fetchImpl });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-startup-command]").textContent)
+        .toContain("npm run companion:start");
+    });
+    expect(document.querySelector("[data-runtime-server]").textContent)
+      .toContain("啟動本機 runtime");
+    expect(document.querySelector("[data-runtime-ai]").textContent).toContain(
+      "npm run companion:setup-key"
+    );
+    expect(document.querySelector("[data-runtime-overlay]").textContent)
+      .toContain("套用 overlay 調校");
+    expect(document.querySelector("[data-startup-action]").textContent)
+      .toContain("先執行 npm run companion:start");
+  });
+
   it("shows the current session summary in the local Companion Console", async () => {
     const fetchImpl = vi.fn(async (url) => {
       if (url.endsWith("/settings/status")) {

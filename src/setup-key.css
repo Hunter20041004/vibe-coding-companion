@@ -29,12 +29,14 @@ body {
 .setup-shell {
   min-height: 100vh;
   display: grid;
-  place-items: center;
+  align-content: start;
+  align-items: start;
+  justify-items: center;
   padding: 24px;
 }
 
 .setup-panel {
-  width: min(640px, 100%);
+  width: min(760px, 100%);
   border: 1px solid var(--line);
   background: var(--panel);
   padding: 28px;
@@ -75,6 +77,122 @@ h1 {
   min-width: 0;
   background: rgba(11, 14, 13, 0.86);
   padding: 14px;
+}
+
+.runtime-panel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(140, 255, 200, 0.2);
+  background:
+    linear-gradient(135deg, rgba(140, 255, 200, 0.08), transparent 44%),
+    rgba(9, 12, 11, 0.7);
+  padding: 14px;
+}
+
+.runtime-panel .panel-label {
+  color: var(--mint);
+}
+
+.runtime-panel-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, auto);
+  gap: 14px;
+  align-items: start;
+}
+
+.runtime-title {
+  margin: 0;
+  color: #f7fffb;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.runtime-command,
+.runtime-step code {
+  border: 1px solid rgba(140, 255, 200, 0.24);
+  background: rgba(4, 8, 7, 0.7);
+  color: var(--mint);
+  overflow-wrap: anywhere;
+}
+
+.runtime-command {
+  justify-self: end;
+  max-width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.runtime-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid rgba(237, 247, 242, 0.12);
+  background: rgba(237, 247, 242, 0.12);
+}
+
+.runtime-step {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  background: rgba(9, 12, 11, 0.92);
+  padding: 12px;
+}
+
+.runtime-step strong {
+  color: #f7fffb;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.runtime-step span:not(.runtime-step-state) {
+  color: #c9d8d1;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.runtime-step code {
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 7px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.runtime-step-state {
+  width: fit-content;
+  border: 1px solid rgba(237, 247, 242, 0.18);
+  background: rgba(237, 247, 242, 0.07);
+  color: var(--muted);
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.runtime-step[data-state="ready"] .runtime-step-state {
+  border-color: rgba(140, 255, 200, 0.36);
+  background: rgba(140, 255, 200, 0.1);
+  color: var(--mint);
+}
+
+.runtime-step[data-state="needs-action"] .runtime-step-state {
+  border-color: rgba(255, 211, 109, 0.4);
+  background: rgba(255, 211, 109, 0.1);
+  color: var(--amber);
+}
+
+.runtime-action {
+  margin: 0;
+  color: #dcebe5;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 dt {
@@ -393,14 +511,20 @@ button:disabled {
   .setup-header,
   .test-panel,
   .vision-panel,
+  .runtime-panel-header,
   .placement-header {
     grid-template-columns: 1fr;
     display: grid;
   }
 
   .status-grid,
+  .runtime-steps,
   .placement-grid {
     grid-template-columns: 1fr;
+  }
+
+  .runtime-command {
+    justify-self: stretch;
   }
 
   .control-grid {

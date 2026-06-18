@@ -83,6 +83,7 @@ describe("Companion launcher", () => {
       cwd,
       envPath,
       spawnImpl,
+      fetchImpl: vi.fn(async () => ({ ok: true })),
       openLogFile: vi.fn(() => 99),
       closeLogFile: vi.fn(),
     });
@@ -106,6 +107,40 @@ describe("Companion launcher", () => {
     await expect(
       fs.readFile(path.join(cwd, "artifacts", "companion-services.json"), "utf8")
     ).resolves.toContain("\"overlay\"");
+  });
+
+  it("waits for the overlay entrypoint before launching the Electron overlay", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "companion-start-"));
+    const envPath = path.join(cwd, "missing.env");
+    const spawned = [];
+    const readinessChecks = [];
+    const spawnImpl = vi.fn((command, args, options) => {
+      const pid = 4500 + spawned.length;
+      spawned.push({ command, args, options, pid });
+      return { pid, unref: vi.fn() };
+    });
+    const fetchImpl = vi.fn(async () => {
+      readinessChecks.push(spawned.map((service) => service.args.join(" ")));
+      return { ok: readinessChecks.length >= 2 };
+    });
+
+    await startCompanionServices({
+      cwd,
+      envPath,
+      spawnImpl,
+      fetchImpl,
+      sleepImpl: vi.fn(async () => {}),
+      openLogFile: vi.fn(() => 99),
+      closeLogFile: vi.fn(),
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith("http://127.0.0.1:5173/overlay.html");
+    expect(readinessChecks[0]).toEqual(["run dev:all"]);
+    expect(readinessChecks.at(-1)).toEqual(["run dev:all"]);
+    expect(spawned.map((service) => service.args.join(" "))).toEqual([
+      "run dev:all",
+      "run overlay",
+    ]);
   });
 
   it("stops recorded detached service groups and removes the pid file", async () => {

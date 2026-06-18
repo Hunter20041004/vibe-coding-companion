@@ -45,6 +45,27 @@ test("overlay stays within the viewport on a desktop-sized screen", async ({
   expect(companionBox.y + companionBox.height).toBeLessThanOrEqual(720);
 });
 
+test("setup console keeps the readiness checklist visible at the top of a long page", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/setup-key.html");
+
+  await expect(page.locator("[data-startup-command]")).not.toHaveText(
+    "checking",
+    { timeout: 12000 }
+  );
+
+  const panelBox = await page.locator(".setup-panel").boundingBox();
+  const readinessBox = await page.locator("[data-runtime-readiness]")
+    .boundingBox();
+
+  expect(panelBox).not.toBeNull();
+  expect(readinessBox).not.toBeNull();
+  expect(panelBox.y).toBeGreaterThanOrEqual(0);
+  expect(readinessBox.y).toBeGreaterThanOrEqual(0);
+});
+
 test("desktop and compact screenshot states render a nonblank character", async ({
   page,
 }, testInfo) => {

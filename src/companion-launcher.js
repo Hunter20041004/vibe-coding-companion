@@ -6,6 +6,8 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const DEFAULT_OVERLAY_READY_TIMEOUT_MS = 30000;
+const DEFAULT_OVERLAY_READY_INTERVAL_MS = 500;
 
 export function defaultCompanionEnvPath({ homeDir = os.homedir() } = {}) {
   return path.join(homeDir, ".vibe-coding-companion.env");
@@ -129,6 +131,8 @@ export async function startCompanionServices({
   cwd = process.cwd(),
   envPath = defaultCompanionEnvPath(),
   spawnImpl = spawn,
+  fetchImpl = globalThis.fetch,
+  sleepImpl = sleep,
   openLogFile = fsSync.openSync,
   closeLogFile = fsSync.closeSync,
 } = {}) {
@@ -145,6 +149,13 @@ export async function startCompanionServices({
 
   const services = [];
   for (const service of plan.services) {
+    if (service.id === "overlay") {
+      await waitForHttpOk(service.env.OVERLAY_URL, {
+        fetchImpl,
+        sleepImpl,
+      });
+    }
+
     const stdoutFd = openLogFile(service.stdoutPath, "a");
     const stderrFd = openLogFile(service.stderrPath, "a");
     try {
@@ -178,6 +189,33 @@ export async function startCompanionServices({
   return { services };
 }
 
+export async function waitForHttpOk(
+  url,
+  {
+    fetchImpl = globalThis.fetch,
+    sleepImpl = sleep,
+    timeoutMs = DEFAULT_OVERLAY_READY_TIMEOUT_MS,
+    intervalMs = DEFAULT_OVERLAY_READY_INTERVAL_MS,
+  } = {}
+) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError;
+
+  while (Date.now() <= deadline) {
+    try {
+      const response = await fetchImpl(url);
+      if (response.ok) return;
+    } catch (error) {
+      lastError = error;
+    }
+
+    await sleepImpl(intervalMs);
+  }
+
+  const suffix = lastError ? `: ${lastError.message}` : "";
+  throw new Error(`Timed out waiting for ${url}${suffix}`);
+}
+
 export async function stopCompanionServices({
   cwd = process.cwd(),
   killImpl = process.kill,
@@ -204,4 +242,8 @@ export async function stopCompanionServices({
 
   await fs.rm(filePath, { force: true });
   return { stopped };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

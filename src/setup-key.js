@@ -1,4 +1,7 @@
-import { createCompanionConsoleWorkflow } from "./companion-console-workflow.js";
+import {
+  createCompanionConsoleWorkflow,
+  createRuntimeReadiness,
+} from "./companion-console-workflow.js";
 import { recommendSkillForTask } from "./skill-recommender.js";
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:5174/settings/google-ai-key";
@@ -59,6 +62,35 @@ export function mountSetupKeyPage(
             <dd data-model-status>checking</dd>
           </div>
         </dl>
+        <section class="runtime-panel" data-runtime-readiness>
+          <div class="runtime-panel-header">
+            <div>
+              <p class="panel-label">Runtime readiness</p>
+              <p class="runtime-title" data-runtime-title>檢查本機服務</p>
+            </div>
+            <code class="runtime-command" data-startup-command>checking</code>
+          </div>
+          <div class="runtime-steps">
+            <div class="runtime-step" data-runtime-server>
+              <span class="runtime-step-state">checking</span>
+              <strong>檢查 runtime</strong>
+              <span>正在讀取本機服務狀態。</span>
+            </div>
+            <div class="runtime-step" data-runtime-ai>
+              <span class="runtime-step-state">checking</span>
+              <strong>檢查 AI key</strong>
+              <span>正在讀取 AI 設定。</span>
+            </div>
+            <div class="runtime-step" data-runtime-overlay>
+              <span class="runtime-step-state">checking</span>
+              <strong>檢查 overlay</strong>
+              <span>正在讀取 overlay 調校。</span>
+            </div>
+          </div>
+          <p class="runtime-action" data-startup-action>
+            正在檢查 Companion Console 啟動狀態。
+          </p>
+        </section>
         <section class="session-panel" data-session-summary-panel>
           <div class="session-summary-top">
             <div>
@@ -205,6 +237,12 @@ export function mountSetupKeyPage(
   const serverStatus = root.querySelector("[data-server-status]");
   const aiStatus = root.querySelector("[data-ai-status]");
   const modelStatus = root.querySelector("[data-model-status]");
+  const runtimeTitle = root.querySelector("[data-runtime-title]");
+  const startupCommand = root.querySelector("[data-startup-command]");
+  const startupAction = root.querySelector("[data-startup-action]");
+  const runtimeServer = root.querySelector("[data-runtime-server]");
+  const runtimeAi = root.querySelector("[data-runtime-ai]");
+  const runtimeOverlay = root.querySelector("[data-runtime-overlay]");
   const sessionSummaryTitle = root.querySelector("[data-session-summary-title]");
   const sessionSummaryPhase = root.querySelector("[data-session-summary-phase]");
   const sessionSummaryBody = root.querySelector("[data-session-summary-body]");
@@ -220,6 +258,48 @@ export function mountSetupKeyPage(
   const overlaySettingsStatus = root.querySelector(
     "[data-overlay-settings-status]"
   );
+  let statusSnapshot = {
+    server: "checking",
+    ai: "checking",
+    model: "checking",
+    provider: null,
+  };
+  let overlaySettingsState = "checking";
+
+  function renderRuntimeReadiness() {
+    const readiness = createRuntimeReadiness({
+      status: statusSnapshot,
+      overlaySettingsState,
+    });
+
+    runtimeTitle.textContent = "本機 companion 啟動清單";
+    startupCommand.textContent = readiness.primaryCommand;
+    startupAction.textContent = readiness.primaryAction;
+    renderRuntimeStep(runtimeServer, readiness.server);
+    renderRuntimeStep(runtimeAi, readiness.ai);
+    renderRuntimeStep(runtimeOverlay, readiness.overlay);
+  }
+
+  function renderRuntimeStep(element, step) {
+    const documentRef = element.ownerDocument;
+    const state = documentRef.createElement("span");
+    const label = documentRef.createElement("strong");
+    const action = documentRef.createElement("span");
+
+    element.dataset.state = step.state;
+    state.className = "runtime-step-state";
+    state.textContent = step.stateLabel;
+    label.textContent = step.label;
+    action.textContent = step.action;
+
+    element.replaceChildren(state, label, action);
+
+    if (step.command) {
+      const command = documentRef.createElement("code");
+      command.textContent = step.command;
+      element.append(command);
+    }
+  }
 
   function setOverlayInputs(settings) {
     idleSizeInput.value = String(settings.idleSize);
@@ -227,6 +307,16 @@ export function mountSetupKeyPage(
     wanderSpeedInput.value = String(settings.wanderSpeed);
     safeMarginInput.value = String(settings.safeMargin);
     preferredSideInput.value = normalizePreferredSide(settings.preferredSide);
+  }
+
+  function setDefaultOverlayInputs() {
+    setOverlayInputs({
+      idleSize: 64,
+      activeScale: 1,
+      wanderSpeed: 1,
+      safeMargin: 24,
+      preferredSide: "auto",
+    });
   }
 
   async function refreshOverlaySettings() {
@@ -237,16 +327,18 @@ export function mountSetupKeyPage(
       if (payload.settings) {
         setOverlayInputs(payload.settings);
         overlaySettingsStatus.textContent = "已載入目前調校。";
+        overlaySettingsState = "loaded";
+      } else {
+        setDefaultOverlayInputs();
+        overlaySettingsStatus.textContent = "無法讀取調校，已使用預設值。";
+        overlaySettingsState = "defaulted";
       }
     } catch {
-      setOverlayInputs({
-        idleSize: 64,
-        activeScale: 1,
-        wanderSpeed: 1,
-        safeMargin: 24,
-        preferredSide: "auto",
-      });
+      setDefaultOverlayInputs();
       overlaySettingsStatus.textContent = "無法讀取調校，已使用預設值。";
+      overlaySettingsState = "defaulted";
+    } finally {
+      renderRuntimeReadiness();
     }
   }
 
@@ -254,11 +346,19 @@ export function mountSetupKeyPage(
     serverStatus.textContent = "checking";
     aiStatus.textContent = "checking";
     modelStatus.textContent = "checking";
+    statusSnapshot = {
+      server: "checking",
+      ai: "checking",
+      model: "checking",
+      provider: null,
+    };
+    renderRuntimeReadiness();
 
-    const statusSnapshot = await consoleWorkflow.loadStatus();
+    statusSnapshot = await consoleWorkflow.loadStatus();
     serverStatus.textContent = statusSnapshot.server;
     aiStatus.textContent = statusSnapshot.ai;
     modelStatus.textContent = statusSnapshot.model;
+    renderRuntimeReadiness();
   }
 
   async function refreshSessionSummary() {
@@ -453,6 +553,8 @@ export function mountSetupKeyPage(
       const payload = await response.json();
       setOverlayInputs(payload.settings ?? settings);
       overlaySettingsStatus.textContent = "已套用 overlay 調校。";
+      overlaySettingsState = "loaded";
+      renderRuntimeReadiness();
     } catch {
       overlaySettingsStatus.textContent =
         "套用失敗，請確認 companion server 正在執行。";
@@ -486,7 +588,8 @@ export function mountSetupKeyPage(
     }
   });
 
-  input.focus();
+  input.focus({ preventScroll: true });
+  renderRuntimeReadiness();
   void refreshStatus();
   void refreshSessionSummary();
   void refreshLatestDecision();
