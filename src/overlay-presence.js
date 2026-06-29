@@ -53,7 +53,7 @@ export function createOverlayPresenceController({
   getOverlayPlacement = () => "right-edge",
   getOverlaySettings = () => ({}),
   getNow = () => Date.now(),
-  intervalMs = 1000,
+  intervalMs = 2500,
 }) {
   let timer = 0;
   let visible = null;

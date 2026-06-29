@@ -138,6 +138,35 @@ describe("Overlay presence", () => {
     expect(overlayWindow.show).toHaveBeenCalledTimes(1);
   });
 
+  it("uses a lower-heat default cadence for foreground polling", () => {
+    vi.useFakeTimers();
+    const overlayWindow = {
+      show: vi.fn(),
+      hide: vi.fn(),
+      isDestroyed: () => false,
+    };
+    const detectForeground = vi.fn(async () => ({
+      appName: "Safari",
+      windowTitle: "OpenAI Docs",
+    }));
+    const controller = createOverlayPresenceController({
+      overlayWindow,
+      detectForeground,
+    });
+
+    controller.start();
+    expect(detectForeground).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(1000);
+    expect(detectForeground).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(1500);
+    expect(detectForeground).toHaveBeenCalledTimes(2);
+
+    controller.stop();
+    vi.useRealTimers();
+  });
+
   it("keeps the overlay window inside the detected Codex window bounds", async () => {
     const overlayWindow = {
       show: vi.fn(),

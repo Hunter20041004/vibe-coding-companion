@@ -68,6 +68,33 @@ describe("Local event server", () => {
     expect(await eventsResponse.json()).toEqual({ events: [] });
   });
 
+  it("returns daily readiness diagnostics from a local-only endpoint", async () => {
+    const server = createLocalEventServer({
+      getReadinessDiagnostic: async () => ({
+        permissions: "ready",
+        hooks: {
+          codex: "ready",
+          claudeCode: "missing",
+        },
+        promptWatcher: "ready",
+      }),
+    });
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await fetch(`${server.url()}/readiness/diagnostic`);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      permissions: "ready",
+      hooks: {
+        codex: "ready",
+        claudeCode: "missing",
+      },
+      promptWatcher: "ready",
+    });
+  });
+
   it("allows browser console controls to clear events through CORS preflight", async () => {
     const server = createLocalEventServer();
     servers.push(server);
@@ -221,6 +248,225 @@ describe("Local event server", () => {
         fallbackState: "error",
       })
     );
+  });
+
+  it("preserves active character when appending AI decisions for hook events", async () => {
+    const classifyEvent = vi.fn(async () => ({
+      state: "debugging",
+      intensity: "high",
+      motion: "panic",
+      line: "Tests need attention.",
+    }));
+    const server = createLocalEventServer({ classifyEvent });
+    servers.push(server);
+    await server.listen(0);
+
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "tool:finish",
+        source: "dashboard-hook-test",
+        characterId: "foam-ghost",
+        tool: "test",
+        status: "failed",
+      }),
+    });
+
+    await waitFor(async () => {
+      const eventsResponse = await fetch(`${server.url()}/events?since=0`);
+      const payload = await eventsResponse.json();
+      const decision = payload.events.find(
+        (item) => item.event.type === "ai:decision"
+      )?.event;
+
+      expect(decision).toEqual(
+        expect.objectContaining({
+          type: "ai:decision",
+          characterId: "foam-ghost",
+          nextStepAdvice: expect.objectContaining({
+            priority: "medium",
+            skill: "diagnose",
+            reason: "目前狀態是 debugging。",
+            presentation: expect.objectContaining({
+              characterId: "foam-ghost",
+              title: "慢慢來：下一步可用 diagnose",
+            }),
+          }),
+        })
+      );
+    });
+  });
+
+  it("turns prompt drafts into local advice without persisting the raw draft", async () => {
+    const classifyEvent = vi.fn(async () => ({
+      state: "thinking",
+      intensity: "medium",
+      motion: "wander",
+      line: "This should not be called for drafts.",
+    }));
+    const server = createLocalEventServer({ classifyEvent });
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "prompt:draft",
+        source: "accessibility",
+        prompt: "fix the failing checkout test, it crashes in CI",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ accepted: true, id: 1 });
+
+    const eventsResponse = await fetch(`${server.url()}/events?since=0`);
+    const payload = await eventsResponse.json();
+
+    expect(payload.events).toEqual([
+      {
+        id: 1,
+        event: {
+          type: "ai:decision",
+          source: "prompt:draft",
+          state: "thinking",
+          intensity: "medium",
+          motion: "point",
+          line: "Prompt 草稿可補重現線索",
+          skillHint: {
+            skill: "diagnose",
+            confidence: "high",
+            reason: "適合重現、定位並修復 bug 或測試失敗。",
+          },
+          nextStepAdvice: {
+            title: "Prompt 草稿可補重現線索",
+            action: "補上錯誤訊息、重現步驟或測試指令。",
+            reason: "草稿看起來是在修 bug，但還缺少可重現的線索。",
+            skill: "diagnose",
+            priority: "medium",
+            speakable: true,
+          },
+          promptAdvice: {
+            title: "Prompt 草稿可補重現線索",
+            action: "補上錯誤訊息、重現步驟或測試指令。",
+            reason: "草稿看起來是在修 bug，但還缺少可重現的線索。",
+            skill: "diagnose",
+            priority: "medium",
+            speakable: true,
+          },
+        },
+      },
+    ]);
+    expect(JSON.stringify(payload.events)).not.toContain("checkout test");
+    expect(classifyEvent).not.toHaveBeenCalled();
+  });
+
+  it("characterizes prompt draft advice when the dashboard includes an active character", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "prompt:draft",
+        source: "console",
+        characterId: "foam-ghost",
+        prompt: "fix the failing checkout test, it crashes in CI",
+      }),
+    });
+
+    const eventsResponse = await fetch(`${server.url()}/events?since=0`);
+    const payload = await eventsResponse.json();
+
+    expect(payload.events).toEqual([
+      {
+        id: 1,
+        event: expect.objectContaining({
+          type: "ai:decision",
+          source: "prompt:draft",
+          characterId: "foam-ghost",
+          nextStepAdvice: expect.objectContaining({
+            title: "Prompt 草稿可補重現線索",
+            action: "補上錯誤訊息、重現步驟或測試指令。",
+            reason: "草稿看起來是在修 bug，但還缺少可重現的線索。",
+            priority: "medium",
+            skill: "diagnose",
+            presentation: {
+              characterId: "foam-ghost",
+              title: "慢慢來：Prompt 草稿可補重現線索",
+              action:
+                "先不用急，補上錯誤訊息、重現步驟或測試指令。 也可以先用 Dashboard textarea。",
+              bubble: "慢慢來：補上錯誤訊息、重現步驟或測試指令。",
+            },
+          }),
+        }),
+      },
+    ]);
+    expect(JSON.stringify(payload.events)).not.toContain("checkout test");
+  });
+
+  it("uses installed skill metadata when advising on prompt drafts", async () => {
+    const loadInstalledSkills = vi.fn(async () => [
+      {
+        name: "diagnose",
+        description:
+          "Disciplined diagnosis loop for hard bugs, regressions, and failing tests.",
+        path: "/skills/diagnose/SKILL.md",
+      },
+    ]);
+    const server = createLocalEventServer({ loadInstalledSkills });
+    servers.push(server);
+    await server.listen(0);
+
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "prompt:draft",
+        source: "console",
+        prompt: "fix the failing checkout test and find the smallest repro",
+      }),
+    });
+
+    const eventsResponse = await fetch(`${server.url()}/events?since=0`);
+    const payload = await eventsResponse.json();
+
+    expect(payload.events[0].event.skillHint).toEqual({
+      skill: "diagnose",
+      confidence: "high",
+      reason:
+        "Disciplined diagnosis loop for hard bugs, regressions, and failing tests.",
+    });
+    expect(loadInstalledSkills).toHaveBeenCalledOnce();
+  });
+
+  it("ignores prompt drafts before they have enough signal", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "prompt:draft",
+        source: "accessibility",
+        prompt: "fix",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({
+      accepted: false,
+      reason: "draft_not_actionable",
+    });
+
+    const eventsResponse = await fetch(`${server.url()}/events?since=0`);
+    expect(await eventsResponse.json()).toEqual({ events: [] });
   });
 
   it("saves a Google AI Studio key through a local-only settings endpoint without echoing it", async () => {

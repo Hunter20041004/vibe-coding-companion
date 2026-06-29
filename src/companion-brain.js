@@ -119,6 +119,9 @@ function createAdviceSpeech(advice) {
   if (advice.speakable === false) return "";
   const priority = String(advice.priority ?? "low");
   if (!["high", "medium"].includes(priority)) return "";
+  if (advice.presentation?.bubble) {
+    return normalizeSpeech(advice.presentation.bubble);
+  }
 
   const skill = String(advice.skill ?? "").trim();
   const action = shortenAdviceAction(advice.action ?? advice.title);

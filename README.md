@@ -45,8 +45,11 @@ saves Google AI Studio settings to `~/.vibe-coding-companion.env` with `0600`
 permissions. It does not print the key to the terminal and does not write it
 into this repo. `companion:start` launches the web app, local event server, and
 Electron overlay as detached background services with logs under
-`artifacts/companion-*.log`. It also stops any previously recorded companion
-services first so repeated starts do not create duplicate hidden processes.
+`artifacts/companion-*.log`. It also launches a prompt watcher that reads the
+focused macOS text input only when the foreground app is Codex or Claude Code,
+then sends settled `prompt:draft` events to the local event server.
+It stops any previously recorded companion services first so repeated starts do
+not create duplicate hidden processes.
 
 The same setup page is also the local Companion Console. It shows:
 
@@ -71,6 +74,9 @@ The same setup page is also the local Companion Console. It shows:
   `diagnose` recommendation instead of a generic skill label. Each advice also
   includes `speakable`, which decides whether the desktop sprite should say it
   out loud or keep it inside the Console.
+- A Prompt Coach textarea that emits local `prompt:draft` events while you type
+  and renders prompt-quality advice through the same Skill hint and Next step
+  panels as the desktop sprite.
 - Overlay calibration controls for idle size, active size, wandering speed,
   safe margin, and preferred side (`auto`, `left`, or `right`). These save to
   `~/.vibe-coding-companion.overlay.json` and are polled by both the Electron
@@ -101,7 +107,13 @@ active app looks like Codex or Claude Code. It shows for:
 - VS Code/Cursor/Windsurf windows whose title includes `codex` or `claude`.
 
 If macOS asks for Accessibility permission for Terminal or Electron, allow it so
-the overlay can read the foreground app and window title.
+the overlay can read the foreground app and window title. The prompt watcher may
+also need Accessibility permission for the shell process running
+`scripts/watch-prompt.js`; without that permission, typing-time prompt advice is
+silent while the rest of the companion keeps working. Some Electron apps do not
+expose their prompt input as an Accessibility text field. In that case, the
+watcher cannot safely read the existing app input box; use the Companion
+Console's Prompt Coach textarea for reliable typing-time advice.
 
 When the foreground app reports window bounds, the overlay keeps the sprite
 window inside the detected Codex/Claude window instead of floating across the
@@ -155,6 +167,30 @@ live sprite state sources. The Console can run a one-shot AI Vision context
 check after explicit user approval, publish the resulting `suggestedState` as an
 overlay decision, and then the sprite reacts on the next event poll. It does not
 continuously watch the screen.
+Typing-time prompt advice uses a local deterministic advisor instead of calling
+the configured AI provider on every draft. The Prompt Coach textarea and optional
+watcher both post drafts to `POST /events` as `{ "type": "prompt:draft",
+"prompt": "..." }`; the server turns each actionable draft into a short
+`ai:decision` with `nextStepAdvice` and does not persist the raw prompt text in
+the event stream. The event server scans installed Codex skills from
+`~/.codex/skills` and plugin skill caches, reads each `SKILL.md` frontmatter
+`name` and `description`, and uses that metadata when ranking Skill hints.
+Drafts shorter than the configured minimum are ignored. To run the watcher by
+itself for debugging:
+
+```bash
+npm run watch:prompt
+```
+
+Useful tuning environment variables:
+
+- `PROMPT_WATCH_INTERVAL_MS` controls how often the focused text input is polled
+  (`1200` by default).
+- `PROMPT_DRAFT_SETTLE_MS` controls how long the draft must stop changing before
+  advice is emitted (`500` by default).
+- `PROMPT_DRAFT_MIN_CHARS` controls the minimum prompt length before advice is
+  considered (`18` by default).
+
 The Console also derives a conservative Skill recommendation from the same
 summary/event metadata. The recommendation is advisory only; it does not execute
 or install skills automatically.

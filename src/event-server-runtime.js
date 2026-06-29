@@ -6,28 +6,39 @@ import {
 } from "./overlay-settings.js";
 import { detectMacForegroundApp } from "./overlay-main-runtime.js";
 import { createPlacementDiagnostic } from "./placement-diagnostic.js";
+import { createInstalledSkillLoader } from "./installed-skill-index.js";
+import { createReadinessDiagnostic } from "./readiness-diagnostic.js";
 import { createVisionAnalyzerFromEnv } from "./vision-context.js";
 
 export function createEventServerOptions({
+  cwd = process.cwd(),
   processEnv = process.env,
   writeGoogleAiStudioEnv: writeEnv = writeGoogleAiStudioEnv,
   createClassifierFromEnv = createCompanionClassifierFromEnv,
   createVisionAnalyzerFromEnv: createVisionAnalyzer = createVisionAnalyzerFromEnv,
   createPlacementDiagnostic: createDiagnostic = createPlacementDiagnostic,
+  createReadinessDiagnostic: createReadiness = createReadinessDiagnostic,
   detectForeground = detectMacForegroundApp,
   readOverlaySettings: readOverlay = readOverlaySettings,
   writeOverlaySettings: writeOverlay = writeOverlaySettings,
+  loadInstalledSkills = createInstalledSkillLoader(),
 } = {}) {
   const getOverlaySettings = () => readOverlay();
   const getPlacementDiagnostic = createDiagnostic({
     detectForeground,
     getOverlaySettings,
   });
+  const getReadinessDiagnostic = createReadiness({
+    cwd,
+    detectForeground,
+  });
 
   return {
     getOverlaySettings,
     saveOverlaySettings: (settings) => writeOverlay({ settings }),
     getPlacementDiagnostic,
+    getReadinessDiagnostic,
+    loadInstalledSkills,
     getSettingsStatus: () => ({
       aiConfigured: Boolean(
         processEnv.AI_API_KEY ??

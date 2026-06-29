@@ -140,6 +140,69 @@ describe("Codex companion overlay shell", () => {
       .toBe("point");
   });
 
+  it("uses the active character and characterized bubble from AI decisions", () => {
+    document.body.innerHTML = '<main id="overlay"></main>';
+
+    const overlay = mountOverlay(document.querySelector("#overlay"), {
+      eventUrl: null,
+    });
+
+    overlay.sendEvent({
+      type: "ai:decision",
+      characterId: "foam-ghost",
+      state: "debugging",
+      intensity: "high",
+      motion: "panic",
+      nextStepAdvice: {
+        title: "Prompt 草稿可補重現線索",
+        action: "補上錯誤訊息、重現步驟或測試指令。",
+        reason: "草稿看起來是在修 bug，但還缺少可重現的線索。",
+        skill: "diagnose",
+        priority: "medium",
+        speakable: true,
+        presentation: {
+          characterId: "foam-ghost",
+          title: "慢慢來：Prompt 草稿可補重現線索",
+          action:
+            "先不用急，補上錯誤訊息、重現步驟或測試指令。 也可以先用 Dashboard textarea。",
+          bubble: "慢慢來：補上錯誤訊息、重現步驟或測試指令。",
+        },
+      },
+    });
+
+    expect(document.querySelector("[data-overlay-root]").dataset.activeCharacter)
+      .toBe("foam-ghost");
+    expect(document.querySelector("[data-dialogue-bubble]").textContent)
+      .toBe("慢慢來：補上錯誤訊息、重現步驟或測試指令。");
+  });
+
+  it("passes the active character into overlay canvas drawing", () => {
+    document.body.innerHTML = '<main id="overlay"></main>';
+    const drawBlobImpl = vi.fn();
+
+    const overlay = mountOverlay(document.querySelector("#overlay"), {
+      eventUrl: null,
+      animationEnabled: false,
+      drawBlobImpl,
+    });
+
+    overlay.sendEvent({
+      type: "ai:decision",
+      characterId: "foam-ghost",
+      state: "debugging",
+      intensity: "medium",
+      motion: "wander",
+    });
+    overlay.drawFrameForTest(300);
+
+    expect(drawBlobImpl).toHaveBeenCalledWith(
+      document.querySelector("[data-character-canvas]"),
+      expect.objectContaining({
+        characterId: "foam-ghost",
+      })
+    );
+  });
+
   it("hides the speech bubble when the overlay returns to a quiet event", () => {
     document.body.innerHTML = '<main id="overlay"></main>';
 
@@ -274,5 +337,52 @@ describe("Codex companion overlay shell", () => {
       "waiting"
     );
     vi.useRealTimers();
+  });
+
+  it("throttles quiet overlay drawing and pauses while the page is hidden", () => {
+    document.body.innerHTML = '<main id="overlay"></main>';
+    const frameCallbacks = [];
+    const listeners = new Map();
+    const documentRef = {
+      visibilityState: "visible",
+      addEventListener: vi.fn((event, listener) => {
+        listeners.set(event, listener);
+      }),
+      removeEventListener: vi.fn(),
+    };
+    const requestAnimationFrameImpl = vi.fn((callback) => {
+      frameCallbacks.push(callback);
+      return frameCallbacks.length;
+    });
+    const cancelAnimationFrameImpl = vi.fn();
+    const drawBlobImpl = vi.fn();
+
+    const overlay = mountOverlay(document.querySelector("#overlay"), {
+      eventUrl: null,
+      animationEnabled: true,
+      documentRef,
+      requestAnimationFrameImpl,
+      cancelAnimationFrameImpl,
+      drawBlobImpl,
+    });
+
+    frameCallbacks.shift()(0);
+    frameCallbacks.shift()(100);
+    frameCallbacks.shift()(250);
+
+    expect(drawBlobImpl).toHaveBeenCalledTimes(2);
+
+    documentRef.visibilityState = "hidden";
+    listeners.get("visibilitychange")();
+
+    expect(cancelAnimationFrameImpl).toHaveBeenCalled();
+
+    documentRef.visibilityState = "visible";
+    listeners.get("visibilitychange")();
+    frameCallbacks.shift()(500);
+
+    expect(drawBlobImpl).toHaveBeenCalledTimes(3);
+
+    overlay.destroy();
   });
 });

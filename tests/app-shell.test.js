@@ -253,6 +253,15 @@ describe("Vibe coding companion shell", () => {
       expect(drawPose(pose).length).toBeGreaterThan(basePixels.length);
     }
   });
+
+  it("draws the selected character palette on the canvas body", () => {
+    expect(drawFrame({ characterId: "cosmic-jellyfish" }).fillStyles)
+      .toContain("#8fd8ff");
+    expect(drawFrame({ characterId: "foam-ghost" }).fillStyles)
+      .toContain("#ffd6e8");
+    expect(drawFrame({ characterId: "green-phosphor-pixel" }).fillStyles)
+      .toContain("#9cff6a");
+  });
 });
 
 function screenText(text) {
@@ -260,7 +269,12 @@ function screenText(text) {
 }
 
 function drawPose(pose) {
+  return drawFrame({ pose }).pixels;
+}
+
+function drawFrame(frame = {}) {
   const pixels = [];
+  const fillStyles = [];
   const context = {
     clearRect() {},
     save() {},
@@ -273,6 +287,7 @@ function drawPose(pose) {
     },
     set fillStyle(value) {
       this.currentFillStyle = value;
+      fillStyles.push(value);
     },
     get fillStyle() {
       return this.currentFillStyle;
@@ -285,13 +300,14 @@ function drawPose(pose) {
   };
 
   drawBlob(canvas, {
-    pose,
+    pose: "float",
     time: 0,
     scale: 1,
     mode: "snark",
     mood: "steady",
     motion: { amplitude: 1 },
+    ...frame,
   });
 
-  return pixels;
+  return { pixels, fillStyles };
 }

@@ -22,6 +22,14 @@ describe("Package scripts", () => {
     );
   });
 
+  it("exposes a prompt watcher for typing-time draft advice", async () => {
+    const packageJson = JSON.parse(await fs.readFile("package.json", "utf8"));
+
+    expect(packageJson.scripts["watch:prompt"]).toBe(
+      "node scripts/watch-prompt.js"
+    );
+  });
+
   it("exposes an overlay script for launching the desktop sprite", async () => {
     const packageJson = JSON.parse(await fs.readFile("package.json", "utf8"));
 

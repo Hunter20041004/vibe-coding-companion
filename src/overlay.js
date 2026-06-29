@@ -4,6 +4,10 @@ import { createEventPoller } from "./event-poller.js";
 import { getBlobFrame } from "./animation-model.js";
 import { drawBlob } from "./app.js";
 import {
+  DEFAULT_CHARACTER_ID,
+  normalizeCharacterId,
+} from "./character-profiles.js";
+import {
   COMPANION_LIGHT_TONES,
   createCompanionWorkInterpreter,
 } from "./companion-work.js";
@@ -21,11 +25,22 @@ export function mountOverlay(root, options = {}) {
   let vibe = 62;
   let scale = 1.2;
   let overlaySettings = { ...DEFAULT_OVERLAY_SETTINGS };
+  let activeCharacterId = DEFAULT_CHARACTER_ID;
   let reaction = { intensity: "medium", motion: "wander", line: "" };
   let animationFrame = 0;
   let settingsTimer = 0;
   let transientTimer = 0;
   let speechTimer = 0;
+  let lastDrawAt = Number.NEGATIVE_INFINITY;
+  let visibilityListener = null;
+  const drawBlobImpl = options.drawBlobImpl ?? drawBlob;
+  const requestAnimationFrameImpl =
+    options.requestAnimationFrameImpl ?? globalThis.requestAnimationFrame;
+  const cancelAnimationFrameImpl =
+    options.cancelAnimationFrameImpl ?? globalThis.cancelAnimationFrame;
+  const documentRef = options.documentRef ?? globalThis.document;
+  const animationEnabled =
+    options.animationEnabled ?? !isJsdomEnvironment();
   const workInterpreter =
     options.workInterpreter ??
     createCompanionWorkInterpreter({
@@ -55,6 +70,7 @@ export function mountOverlay(root, options = {}) {
   const characterCanvas = root.querySelector("[data-character-canvas]");
   const dialogueBubble = root.querySelector("[data-dialogue-bubble]");
   const closeButton = root.querySelector("[data-overlay-close]");
+  overlayRoot.dataset.activeCharacter = activeCharacterId;
 
   function applyOverlaySettings(settings) {
     overlaySettings = normalizeOverlaySettings(settings);
@@ -98,6 +114,12 @@ export function mountOverlay(root, options = {}) {
     overlayRoot.dataset.aiIntensity = reaction.intensity;
     overlayRoot.dataset.aiMotion = reaction.motion;
     overlayRoot.dataset.aiLine = reaction.line;
+    if (event.characterId || event.nextStepAdvice?.presentation?.characterId) {
+      activeCharacterId = normalizeCharacterId(
+        event.characterId ?? event.nextStepAdvice.presentation.characterId
+      );
+      overlayRoot.dataset.activeCharacter = activeCharacterId;
+    }
     const brainReaction = packet.brainReaction;
     overlayRoot.dataset.companionGesture = brainReaction.gesture;
     updateDialogueBubble(dialogueBubble, brainReaction);
@@ -142,26 +164,69 @@ export function mountOverlay(root, options = {}) {
   });
 
   function drawLoop(time = 0) {
-    drawBlob(characterCanvas, {
-      ...getBlobFrame({
-        state: agentState.current(),
-        vibe,
-        baseScale: scale,
-        anchor: { x: 0, y: 0 },
-        time,
-        mode: "snark",
-        reaction,
-      }),
-      mode: "snark",
-      state: agentState.current(),
-      time,
-    });
+    animationFrame = 0;
+    if (isOverlayPageHidden(documentRef)) {
+      return;
+    }
 
-    animationFrame = requestAnimationFrame(drawLoop);
+    const state = agentState.current();
+    if (time - lastDrawAt >= getOverlayFrameIntervalMs(state)) {
+      drawBlobImpl(characterCanvas, {
+        ...getBlobFrame({
+          state,
+          vibe,
+          baseScale: scale,
+          anchor: { x: 0, y: 0 },
+          time,
+          mode: "snark",
+          reaction,
+        }),
+        mode: "snark",
+        characterId: activeCharacterId,
+        state,
+        time,
+      });
+      lastDrawAt = time;
+    }
+
+    startAnimationLoop();
   }
 
-  if (typeof requestAnimationFrame === "function" && !isJsdomEnvironment()) {
-    animationFrame = requestAnimationFrame(drawLoop);
+  function startAnimationLoop() {
+    if (
+      !animationEnabled ||
+      animationFrame ||
+      typeof requestAnimationFrameImpl !== "function" ||
+      isOverlayPageHidden(documentRef)
+    ) {
+      return;
+    }
+
+    animationFrame = requestAnimationFrameImpl(drawLoop);
+  }
+
+  function stopAnimationLoop() {
+    if (!animationFrame) {
+      return;
+    }
+
+    if (typeof cancelAnimationFrameImpl === "function") {
+      cancelAnimationFrameImpl(animationFrame);
+    }
+    animationFrame = 0;
+  }
+
+  if (animationEnabled) {
+    visibilityListener = () => {
+      if (isOverlayPageHidden(documentRef)) {
+        stopAnimationLoop();
+        return;
+      }
+
+      startAnimationLoop();
+    };
+    documentRef?.addEventListener?.("visibilitychange", visibilityListener);
+    startAnimationLoop();
   }
 
   if (eventPoller && !isJsdomEnvironment()) {
@@ -178,13 +243,15 @@ export function mountOverlay(root, options = {}) {
   return {
     setState,
     sendEvent,
+    drawFrameForTest: drawLoop,
     pollSettingsOnce,
     pollEventsOnce() {
       return eventPoller?.pollOnce();
     },
     destroy() {
-      if (animationFrame) {
-        cancelAnimationFrame(animationFrame);
+      stopAnimationLoop();
+      if (visibilityListener) {
+        documentRef?.removeEventListener?.("visibilitychange", visibilityListener);
       }
       if (settingsTimer) {
         clearInterval(settingsTimer);
@@ -202,6 +269,14 @@ export function mountOverlay(root, options = {}) {
 
 function isTransientState(state) {
   return state === "error" || state === "success";
+}
+
+function getOverlayFrameIntervalMs(state) {
+  return state === "idle" || state === "waiting" ? 250 : 42;
+}
+
+function isOverlayPageHidden(documentRef) {
+  return documentRef?.visibilityState === "hidden" || documentRef?.hidden === true;
 }
 
 function isJsdomEnvironment() {

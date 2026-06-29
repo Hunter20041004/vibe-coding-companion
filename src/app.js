@@ -10,6 +10,10 @@ import {
   COMPANION_LIGHT_TONES,
   createCompanionWorkInterpreter,
 } from "./companion-work.js";
+import {
+  getCharacterProfile,
+  normalizeCharacterId,
+} from "./character-profiles.js";
 
 export function mountApp(root, options = {}) {
   if (!root) {
@@ -359,9 +363,10 @@ export function drawBlob(canvas, frame) {
   context.scale(frame.scale, frame.scale);
   context.rotate(getPoseRotation(frame.pose, frame.time, amp));
 
-  const body = frame.mode === "showcase" ? "#8df8ff" : "#89ffc1";
-  const shade = frame.mood === "panic" ? "#ff7d99" : "#4be39d";
-  const face = "#071014";
+  const palette = getCharacterPalette(frame);
+  const body = palette.body;
+  const shade = frame.mood === "panic" ? palette.panic : palette.shade;
+  const face = palette.face;
 
   context.fillStyle = body;
   drawPixels(context, pixel, [
@@ -471,6 +476,25 @@ export function drawBlob(canvas, frame) {
   }
 
   context.restore();
+}
+
+function getCharacterPalette(frame = {}) {
+  if (!frame.characterId) {
+    return {
+      body: frame.mode === "showcase" ? "#8df8ff" : "#89ffc1",
+      shade: frame.mood === "panic" ? "#ff7d99" : "#4be39d",
+      panic: "#ff7d99",
+      face: "#071014",
+    };
+  }
+
+  const profile = getCharacterProfile(normalizeCharacterId(frame.characterId));
+  return {
+    body: profile.theme.accent,
+    shade: profile.theme.glow,
+    panic: "#ff7d99",
+    face: "#071014",
+  };
 }
 
 function getPoseJump(pose, time, amplitude) {

@@ -51,6 +51,7 @@ test("setup console keeps the readiness checklist visible at the top of a long p
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/setup-key.html");
 
+  await expect(page).toHaveTitle("Vibe Companion Dashboard");
   await expect(page.locator("[data-startup-command]")).not.toHaveText(
     "checking",
     { timeout: 12000 }
@@ -64,6 +65,52 @@ test("setup console keeps the readiness checklist visible at the top of a long p
   expect(readinessBox).not.toBeNull();
   expect(panelBox.y).toBeGreaterThanOrEqual(0);
   expect(readinessBox.y).toBeGreaterThanOrEqual(0);
+});
+
+test("daily companion dashboard drives character prompt coach and hook overlay flow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/setup-key.html");
+
+  await expect(page.locator("[data-companion-stage]")).toBeVisible();
+  await expect(page.locator("[data-diagnostics-panel]")).not.toHaveAttribute(
+    "open",
+    ""
+  );
+  await expect(page.locator("[data-readiness-item]")).toHaveCount(7);
+
+  await page.locator('[data-character-option="foam-ghost"]').click();
+  await expect(page.locator("[data-setup-root]")).toHaveAttribute(
+    "data-active-character",
+    "foam-ghost"
+  );
+  await expect(page.locator("[data-active-character-name]")).toContainText(
+    "奶泡幽靈"
+  );
+
+  await page
+    .locator("[data-prompt-draft-input]")
+    .fill("fix the failing checkout test, it crashes in CI");
+  await expect(page.locator("[data-next-step-title]")).toContainText(
+    "慢慢來：Prompt 草稿可補重現線索",
+    { timeout: 5000 }
+  );
+
+  await page.locator("[data-send-test-event]").click();
+  await expect(page.locator("[data-last-ai-decision]")).toContainText(
+    "已送出 hook 測試事件",
+    { timeout: 5000 }
+  );
+
+  await page.goto("/overlay.html");
+  await expect(page.locator("[data-agent-state]")).toHaveText("error", {
+    timeout: 3000,
+  });
+  await expect(page.locator("[data-overlay-root]")).toHaveAttribute(
+    "data-active-character",
+    "foam-ghost"
+  );
 });
 
 test("desktop and compact screenshot states render a nonblank character", async ({

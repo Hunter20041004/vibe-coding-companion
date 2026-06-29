@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mountSetupKeyPage } from "../src/setup-key.js";
 
 describe("Google AI Studio key setup page", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it("loads companion status into the control panel", async () => {
     const fetchImpl = vi.fn(async (url) => {
       if (url.endsWith("/settings/status")) {
@@ -66,6 +70,182 @@ describe("Google AI Studio key setup page", () => {
       .toContain("套用 overlay 調校");
     expect(document.querySelector("[data-startup-action]").textContent)
       .toContain("先執行 npm run companion:start");
+  });
+
+  it("opens as a hero companion dashboard before diagnostics", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (url.endsWith("/settings/status")) {
+        throw new Error("server_not_running");
+      }
+
+      if (url.endsWith("/settings/overlay")) {
+        throw new Error("overlay_settings_unavailable");
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    document.body.innerHTML = '<main id="setup"></main>';
+
+    mountSetupKeyPage(document.querySelector("#setup"), { fetchImpl });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-companion-stage]")).toBeTruthy();
+    });
+
+    expect(
+      [...document.querySelectorAll("[data-dashboard-section]")].map(
+        (section) => section.dataset.dashboardSection
+      )
+    ).toEqual([
+      "companion-stage",
+      "next-step",
+      "characters",
+      "prompt-coach",
+      "guided-readiness",
+      "diagnostics",
+    ]);
+    expect(document.querySelector("[data-active-character-name]").textContent)
+      .toContain("宇宙水母");
+    expect(document.querySelector("[data-diagnostics-panel]").open).toBe(false);
+  });
+
+  it("shows guided readiness with required items and an optional AI key item", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (url.endsWith("/settings/status")) {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            aiConfigured: false,
+            provider: null,
+            model: null,
+          }),
+        };
+      }
+
+      if (url.endsWith("/settings/overlay")) {
+        throw new Error("overlay_settings_unavailable");
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    document.body.innerHTML = '<main id="setup"></main>';
+
+    mountSetupKeyPage(document.querySelector("#setup"), { fetchImpl });
+
+    await waitFor(() => {
+      expect(document.querySelectorAll("[data-readiness-item]").length).toBe(7);
+    });
+
+    expect(
+      [...document.querySelectorAll("[data-readiness-item]")].map(
+        (item) => item.dataset.readinessItem
+      )
+    ).toEqual([
+      "server",
+      "overlay",
+      "permissions",
+      "codex-hooks",
+      "claude-code-hooks",
+      "ai-key",
+      "prompt-watcher",
+    ]);
+    expect(document.querySelector('[data-readiness-item="ai-key"]').textContent)
+      .toContain("optional");
+    expect(document.querySelector("[data-privacy-note]").textContent)
+      .toContain("raw prompt");
+  });
+
+  it("renders guided readiness from the local diagnostic endpoint", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (url.endsWith("/settings/status")) {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            aiConfigured: false,
+            provider: null,
+            model: null,
+          }),
+        };
+      }
+
+      if (url.endsWith("/settings/overlay")) {
+        return {
+          ok: true,
+          json: async () => ({
+            settings: {
+              idleSize: 64,
+              activeScale: 1,
+              wanderSpeed: 1,
+              safeMargin: 24,
+            },
+          }),
+        };
+      }
+
+      if (url.endsWith("/readiness/diagnostic")) {
+        return {
+          ok: true,
+          json: async () => ({
+            permissions: "ready",
+            hooks: {
+              codex: "ready",
+              claudeCode: "missing",
+            },
+            promptWatcher: "ready",
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    document.body.innerHTML = '<main id="setup"></main>';
+
+    mountSetupKeyPage(document.querySelector("#setup"), { fetchImpl });
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-readiness-item="codex-hooks"]')
+        .dataset.state).toBe("ready");
+    });
+    expect(document.querySelector('[data-readiness-item="permissions"]')
+      .dataset.state).toBe("ready");
+    expect(document.querySelector('[data-readiness-item="prompt-watcher"]')
+      .dataset.state).toBe("ready");
+    expect(document.querySelector('[data-readiness-item="claude-code-hooks"]')
+      .dataset.state).toBe("needs-action");
+  });
+
+  it("saves active character selection and updates the companion stage", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (url.endsWith("/settings/status")) {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            aiConfigured: false,
+            provider: null,
+            model: null,
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    document.body.innerHTML = '<main id="setup"></main>';
+
+    mountSetupKeyPage(document.querySelector("#setup"), { fetchImpl });
+    document
+      .querySelector('[data-character-option="foam-ghost"]')
+      .click();
+
+    expect(document.querySelector("[data-setup-root]").dataset.activeCharacter)
+      .toBe("foam-ghost");
+    expect(document.querySelector("[data-active-character-name]").textContent)
+      .toContain("奶泡幽靈");
+    expect(JSON.parse(window.localStorage.getItem(
+      "vibe-coding-companion-preferences"
+    )).activeCharacterId).toBe("foam-ghost");
   });
 
   it("shows the current session summary in the local Companion Console", async () => {
@@ -172,6 +352,144 @@ describe("Google AI Studio key setup page", () => {
     expect(document.querySelector("[data-skill-hint]").textContent).toContain(
       "diagnose"
     );
+  });
+
+  it("keeps long skill hint reasons compact in the daily dashboard", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (url.endsWith("/settings/status")) {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            aiConfigured: false,
+            provider: null,
+            model: null,
+          }),
+        };
+      }
+
+      if (url.endsWith("/events?since=0")) {
+        return {
+          ok: true,
+          json: async () => ({
+            events: [
+              {
+                id: 1,
+                event: {
+                  type: "ai:decision",
+                  state: "debugging",
+                  skillHint: {
+                    skill: "diagnose",
+                    confidence: "high",
+                    reason:
+                      "Disciplined diagnosis loop for hard bugs and performance regressions. Reproduce → minimise → hypothesise → instrument → fix → regression-test.",
+                  },
+                },
+              },
+            ],
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    document.body.innerHTML = '<main id="setup"></main>';
+
+    mountSetupKeyPage(document.querySelector("#setup"), { fetchImpl });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-skill-hint]").textContent).toBe(
+        "diagnose / high：Disciplined diagnosis loop for hard bugs and performance regressions."
+      );
+    });
+  });
+
+  it("sends prompt coach drafts and renders the returned advice", async () => {
+    const fetchImpl = vi.fn(async (url, options = {}) => {
+      if (url.endsWith("/settings/status")) {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            aiConfigured: true,
+            provider: "google",
+            model: "gemma-4-31b-it",
+          }),
+        };
+      }
+
+      if (url.endsWith("/events") && options.method === "POST") {
+        expect(JSON.parse(options.body).characterId).toBe("cosmic-jellyfish");
+        return { ok: true, json: async () => ({ accepted: true, id: 5 }) };
+      }
+
+      if (url.endsWith("/events?since=0")) {
+        return {
+          ok: true,
+          json: async () => ({
+            events: [
+              {
+                id: 5,
+                event: {
+                  type: "ai:decision",
+                  source: "prompt:draft",
+                  state: "thinking",
+                  skillHint: {
+                    skill: "diagnose",
+                    confidence: "high",
+                    reason: "適合重現、定位並修復 bug 或測試失敗。",
+                  },
+                  nextStepAdvice: {
+                    title: "Prompt 草稿可補重現線索",
+                    action: "補上錯誤訊息、重現步驟或測試指令。",
+                    reason: "草稿看起來是在修 bug，但還缺少可重現的線索。",
+                    skill: "diagnose",
+                    priority: "medium",
+                    speakable: true,
+                  },
+                },
+              },
+            ],
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    document.body.innerHTML = '<main id="setup"></main>';
+
+    mountSetupKeyPage(document.querySelector("#setup"), {
+      fetchImpl,
+      promptDraftDelayMs: 0,
+    });
+    const input = document.querySelector("[data-prompt-draft-input]");
+    input.value = "fix the failing checkout test, it crashes in CI";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+
+    await waitFor(() => {
+      expect(fetchImpl).toHaveBeenCalledWith(
+        "http://127.0.0.1:5174/events",
+        expect.objectContaining({
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            type: "prompt:draft",
+            source: "console",
+            characterId: "cosmic-jellyfish",
+            prompt: "fix the failing checkout test, it crashes in CI",
+          }),
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector("[data-prompt-coach-status]").textContent)
+        .toContain("補上錯誤訊息");
+    });
+    expect(document.querySelector("[data-skill-hint]").textContent).toContain(
+      "diagnose"
+    );
+    expect(document.querySelector("[data-next-step-title]").textContent)
+      .toContain("Prompt 草稿可補重現線索");
   });
 
   it("saves a pasted key to the local settings endpoint and clears the input", async () => {
@@ -303,11 +621,92 @@ describe("Google AI Studio key setup page", () => {
         method: "POST",
         body: JSON.stringify({
           type: "tool:finish",
+          source: "dashboard-hook-test",
+          characterId: "cosmic-jellyfish",
           tool: "test",
           status: "failed",
         }),
       })
     );
+  });
+
+  it("sends active character with hook test events and stays useful without AI decisions", async () => {
+    const fetchImpl = vi.fn(async (url, options = {}) => {
+      if (url.endsWith("/settings/status")) {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            aiConfigured: false,
+            provider: null,
+            model: null,
+          }),
+        };
+      }
+
+      if (url.endsWith("/events") && options.method === "DELETE") {
+        return { ok: true, json: async () => ({ cleared: true }) };
+      }
+
+      if (url.endsWith("/events") && options.method === "POST") {
+        expect(JSON.parse(options.body)).toEqual({
+          type: "tool:finish",
+          source: "dashboard-hook-test",
+          characterId: "foam-ghost",
+          tool: "test",
+          status: "failed",
+        });
+        return { ok: true, json: async () => ({ accepted: true, id: 1 }) };
+      }
+
+      if (url.endsWith("/events?since=0")) {
+        return {
+          ok: true,
+          json: async () => ({
+            events: [
+              {
+                id: 1,
+                event: {
+                  type: "tool:finish",
+                  source: "dashboard-hook-test",
+                  characterId: "foam-ghost",
+                  tool: "test",
+                  status: "failed",
+                },
+              },
+            ],
+          }),
+        };
+      }
+
+      if (url.endsWith("/session/summary")) {
+        return {
+          ok: true,
+          json: async () => ({
+            summary: {
+              title: "正在修測試失敗",
+              phase: "debugging",
+              summary: "Dashboard 已送出 hook 測試事件。",
+              signals: ["test failed x1"],
+            },
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    document.body.innerHTML = '<main id="setup"></main>';
+
+    mountSetupKeyPage(document.querySelector("#setup"), { fetchImpl });
+    document
+      .querySelector('[data-character-option="foam-ghost"]')
+      .click();
+    document.querySelector("[data-send-test-event]").click();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-last-ai-decision]").textContent)
+        .toContain("已送出 hook 測試事件");
+    });
   });
 
   it("captures one approved screen frame and shows the vision context", async () => {
@@ -535,7 +934,7 @@ describe("Google AI Studio key setup page", () => {
   });
 });
 
-async function waitFor(assertion, timeoutMs = 250) {
+async function waitFor(assertion, timeoutMs = 1000) {
   const start = Date.now();
   let lastError;
 

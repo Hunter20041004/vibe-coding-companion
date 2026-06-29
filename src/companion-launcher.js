@@ -99,6 +99,7 @@ export function createCompanionLaunchPlan({
     ...env,
     OVERLAY_URL: env.OVERLAY_URL ?? "http://127.0.0.1:5173/overlay.html",
     EVENT_URL: env.EVENT_URL ?? "http://127.0.0.1:5174/events",
+    PROMPT_WATCH_INTERVAL_MS: env.PROMPT_WATCH_INTERVAL_MS ?? "1200",
   };
 
   return {
@@ -122,6 +123,16 @@ export function createCompanionLaunchPlan({
         detached: true,
         stdoutPath: path.join(artifactsDir, "companion-overlay.log"),
         stderrPath: path.join(artifactsDir, "companion-overlay.err.log"),
+      },
+      {
+        id: "prompt-watch",
+        command: "npm",
+        args: ["run", "watch:prompt"],
+        cwd,
+        env: sharedEnv,
+        detached: true,
+        stdoutPath: path.join(artifactsDir, "companion-prompt-watch.log"),
+        stderrPath: path.join(artifactsDir, "companion-prompt-watch.err.log"),
       },
     ],
   };

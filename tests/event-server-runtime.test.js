@@ -67,6 +67,26 @@ describe("Event server runtime", () => {
     );
   });
 
+  it("exposes the installed Codex skill metadata loader", async () => {
+    const loadInstalledSkills = vi.fn(async () => [
+      {
+        name: "diagnose",
+        description: "Disciplined diagnosis loop.",
+        path: "/skills/diagnose/SKILL.md",
+      },
+    ]);
+    const options = createEventServerOptions({ loadInstalledSkills });
+
+    await expect(options.loadInstalledSkills()).resolves.toEqual([
+      {
+        name: "diagnose",
+        description: "Disciplined diagnosis loop.",
+        path: "/skills/diagnose/SKILL.md",
+      },
+    ]);
+    expect(loadInstalledSkills).toHaveBeenCalledOnce();
+  });
+
   it("exposes overlay calibration readers and writers", async () => {
     const readOverlaySettings = vi.fn(async () => ({
       idleSize: 76,
@@ -186,6 +206,43 @@ describe("Event server runtime", () => {
       expect.objectContaining({
         detectForeground,
         getOverlaySettings: expect.any(Function),
+      })
+    );
+  });
+
+  it("creates a readiness diagnostic provider from runtime probes", async () => {
+    const getReadinessDiagnostic = vi.fn(async () => ({
+      permissions: "ready",
+      hooks: {
+        codex: "ready",
+        claudeCode: "missing",
+      },
+      promptWatcher: "ready",
+    }));
+    const createReadinessDiagnostic = vi.fn(() => getReadinessDiagnostic);
+    const detectForeground = vi.fn(async () => ({
+      appName: "Codex",
+      accessibilityRegions: [{ role: "AXTextArea" }],
+    }));
+
+    const options = createEventServerOptions({
+      cwd: "/project",
+      detectForeground,
+      createReadinessDiagnostic,
+    });
+
+    await expect(options.getReadinessDiagnostic()).resolves.toEqual({
+      permissions: "ready",
+      hooks: {
+        codex: "ready",
+        claudeCode: "missing",
+      },
+      promptWatcher: "ready",
+    });
+    expect(createReadinessDiagnostic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cwd: "/project",
+        detectForeground,
       })
     );
   });

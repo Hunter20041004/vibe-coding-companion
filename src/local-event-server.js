@@ -1,6 +1,9 @@
 import http from "node:http";
+import { characterizeAdvice } from "./characterized-advice.js";
+import { normalizeCharacterId } from "./character-profiles.js";
 import { mapEventToState } from "./event-adapter.js";
 import { createNextStepAdvice } from "./next-step-advice.js";
+import { createPromptDraftAdvice } from "./prompt-advisor.js";
 import { createSessionSummary } from "./session-summary.js";
 import { recommendSkillForTask } from "./skill-recommender.js";
 
@@ -14,6 +17,8 @@ export function createLocalEventServer({
   saveOverlaySettings = null,
   analyzeVisionContext = null,
   getPlacementDiagnostic = null,
+  getReadinessDiagnostic = null,
+  loadInstalledSkills = null,
 } = {}) {
   const events = [];
   let nextId = 1;
@@ -69,6 +74,16 @@ export function createLocalEventServer({
       return;
     }
 
+    if (request.method === "GET" && url.pathname === "/readiness/diagnostic") {
+      if (!getReadinessDiagnostic) {
+        sendJson(response, 503, { error: "readiness_diagnostic_unavailable" });
+        return;
+      }
+
+      sendJson(response, 200, await getReadinessDiagnostic());
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/settings/overlay") {
       if (!saveOverlaySettings) {
         sendJson(response, 503, { error: "overlay_settings_writer_unavailable" });
@@ -90,7 +105,7 @@ export function createLocalEventServer({
       const context = await analyzeVisionContext({
         imageDataUrl: payload.imageDataUrl,
       });
-      const decisionEvent = createVisionDecisionEvent(context);
+      const decisionEvent = await createVisionDecisionEvent(context);
       if (decisionEvent) {
         appendEvent(decisionEvent);
       }
@@ -100,6 +115,20 @@ export function createLocalEventServer({
 
     if (request.method === "POST" && url.pathname === "/events") {
       const event = await readJson(request);
+      if (event?.type === "prompt:draft") {
+        const item = await appendPromptDraftDecision(event);
+        if (!item) {
+          sendJson(response, 202, {
+            accepted: false,
+            reason: "draft_not_actionable",
+          });
+          return;
+        }
+
+        sendJson(response, 202, { accepted: true, id: item.id });
+        return;
+      }
+
       const item = appendEvent(event);
       sendJson(response, 202, { accepted: true, id: item.id });
 
@@ -206,23 +235,30 @@ export function createLocalEventServer({
     }
 
     const recentEvents = events.map((item) => item.event).slice(-8);
-    const skillHint = recommendSkillForTask({
+    const skillHint = await recommendFromInstalledSkills({
       event: sourceEvent,
       recentEvents,
       state: decision.state,
       line: decision.line,
+    });
+    const characterId = sourceEvent.characterId
+      ? normalizeCharacterId(sourceEvent.characterId)
+      : null;
+    const nextStepAdvice = createNextStepAdvice({
+      event: sourceEvent,
+      recentEvents,
+      state: decision.state,
+      skillHint,
     });
 
     appendEvent({
       type: "ai:decision",
       sourceEventId,
       skillHint,
-      nextStepAdvice: createNextStepAdvice({
-        event: sourceEvent,
-        recentEvents,
-        state: decision.state,
-        skillHint,
-      }),
+      ...(characterId ? { characterId } : {}),
+      nextStepAdvice: characterId
+        ? characterizeAdvice(nextStepAdvice, characterId)
+        : nextStepAdvice,
       ...decision,
     });
   }
@@ -234,34 +270,80 @@ export function createLocalEventServer({
 
     return item;
   }
-}
 
-function createVisionDecisionEvent(context) {
-  if (!context?.suggestedState) {
-    return null;
+  async function appendPromptDraftDecision(event) {
+    const decisionEvent = await createPromptDraftDecisionEvent(event);
+    return decisionEvent ? appendEvent(decisionEvent) : null;
   }
 
-  const state = String(context.suggestedState);
-  const safeZone = normalizeSafeZone(context.safeZone);
-  const skillHint = recommendSkillForTask({
-    activity: context.activity,
-    suggestedState: state,
-    visibleSignals: context.visibleSignals,
-  });
+  async function createPromptDraftDecisionEvent(event = {}) {
+    const skills = await getInstalledSkills();
+    const advice = createPromptDraftAdvice({
+      prompt: event.prompt,
+      skills,
+      characterId: event.characterId,
+    });
+    if (!advice) return null;
 
-  return {
-    type: "ai:decision",
-    source: "vision:context",
-    state,
-    intensity: intensityForConfidence(context.confidence),
-    motion: motionForState(state),
-    line: String(context.activity ?? "").slice(0, 180),
-    visibleSignals: Array.isArray(context.visibleSignals)
-      ? context.visibleSignals.map((signal) => String(signal).slice(0, 80)).slice(0, 6)
-      : [],
-    ...(safeZone ? { safeZone } : {}),
-    skillHint,
-  };
+    const { skillHint, ...promptAdvice } = advice;
+    return {
+      type: "ai:decision",
+      source: "prompt:draft",
+      state: "thinking",
+      intensity: "medium",
+      motion: "point",
+      line: advice.title,
+      ...(advice.presentation?.characterId
+        ? { characterId: advice.presentation.characterId }
+        : {}),
+      ...(skillHint ? { skillHint } : {}),
+      nextStepAdvice: promptAdvice,
+      promptAdvice,
+    };
+  }
+
+  async function createVisionDecisionEvent(context) {
+    if (!context?.suggestedState) {
+      return null;
+    }
+
+    const state = String(context.suggestedState);
+    const safeZone = normalizeSafeZone(context.safeZone);
+    const skillHint = await recommendFromInstalledSkills({
+      activity: context.activity,
+      suggestedState: state,
+      visibleSignals: context.visibleSignals,
+    });
+
+    return {
+      type: "ai:decision",
+      source: "vision:context",
+      state,
+      intensity: intensityForConfidence(context.confidence),
+      motion: motionForState(state),
+      line: String(context.activity ?? "").slice(0, 180),
+      visibleSignals: Array.isArray(context.visibleSignals)
+        ? context.visibleSignals
+            .map((signal) => String(signal).slice(0, 80))
+            .slice(0, 6)
+        : [],
+      ...(safeZone ? { safeZone } : {}),
+      skillHint,
+    };
+  }
+
+  async function recommendFromInstalledSkills(context) {
+    return recommendSkillForTask(context, { skills: await getInstalledSkills() });
+  }
+
+  async function getInstalledSkills() {
+    if (!loadInstalledSkills) return [];
+    try {
+      return await loadInstalledSkills();
+    } catch {
+      return [];
+    }
+  }
 }
 
 function createPlacementSettingsOverride(url) {

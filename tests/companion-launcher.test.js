@@ -39,6 +39,14 @@ describe("Companion launcher", () => {
         stdoutPath: "/project/artifacts/companion-overlay.log",
         stderrPath: "/project/artifacts/companion-overlay.err.log",
       }),
+      expect.objectContaining({
+        id: "prompt-watch",
+        command: "npm",
+        args: ["run", "watch:prompt"],
+        detached: true,
+        stdoutPath: "/project/artifacts/companion-prompt-watch.log",
+        stderrPath: "/project/artifacts/companion-prompt-watch.err.log",
+      }),
     ]);
     expect(plan.services.map((service) => service.command)).not.toContain(
       "osascript"
@@ -46,6 +54,19 @@ describe("Companion launcher", () => {
     expect(plan.services.map((service) => service.command)).not.toContain(
       "open"
     );
+  });
+
+  it("defaults background prompt watching to a lower-heat polling interval", () => {
+    const plan = createCompanionLaunchPlan({
+      cwd: "/project",
+      env: {},
+    });
+
+    expect(
+      plan.services.find((service) => service.id === "prompt-watch").env
+    ).toMatchObject({
+      PROMPT_WATCH_INTERVAL_MS: "1200",
+    });
   });
 
   it("writes a private Google AI Studio env file outside the project", async () => {
@@ -91,8 +112,9 @@ describe("Companion launcher", () => {
     expect(result.services).toEqual([
       { id: "dev", pid: 4400 },
       { id: "overlay", pid: 4401 },
+      { id: "prompt-watch", pid: 4402 },
     ]);
-    expect(spawned).toHaveLength(2);
+    expect(spawned).toHaveLength(3);
     expect(spawned[0].options).toMatchObject({
       cwd,
       detached: true,
@@ -103,7 +125,7 @@ describe("Companion launcher", () => {
       GEMINI_API_KEY: "loaded-key",
       AI_MODEL: "gemma-4-31b-it",
     });
-    expect(childUnref).toHaveBeenCalledTimes(2);
+    expect(childUnref).toHaveBeenCalledTimes(3);
     await expect(
       fs.readFile(path.join(cwd, "artifacts", "companion-services.json"), "utf8")
     ).resolves.toContain("\"overlay\"");
@@ -140,6 +162,7 @@ describe("Companion launcher", () => {
     expect(spawned.map((service) => service.args.join(" "))).toEqual([
       "run dev:all",
       "run overlay",
+      "run watch:prompt",
     ]);
   });
 
@@ -153,6 +176,7 @@ describe("Companion launcher", () => {
         services: [
           { id: "dev", pid: 4400 },
           { id: "overlay", pid: 4401 },
+          { id: "prompt-watch", pid: 4402 },
         ],
       })
     );
@@ -162,9 +186,11 @@ describe("Companion launcher", () => {
 
     expect(killImpl).toHaveBeenCalledWith(-4400, "SIGTERM");
     expect(killImpl).toHaveBeenCalledWith(-4401, "SIGTERM");
+    expect(killImpl).toHaveBeenCalledWith(-4402, "SIGTERM");
     expect(result.stopped).toEqual([
       { id: "dev", pid: 4400 },
       { id: "overlay", pid: 4401 },
+      { id: "prompt-watch", pid: 4402 },
     ]);
     await expect(
       fs.readFile(path.join(artifactsDir, "companion-services.json"), "utf8")
