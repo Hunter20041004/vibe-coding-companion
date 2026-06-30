@@ -41,9 +41,9 @@ describe("Placement diagnostic", () => {
       avoidRegionCount: 4,
       chosenBounds: {
         x: 24,
-        y: 304,
-        width: 132,
-        height: 156,
+        y: 56,
+        width: 220,
+        height: 204,
       },
     });
   });
@@ -75,8 +75,8 @@ describe("Placement diagnostic", () => {
       chosenBounds: {
         x: 104,
         y: 333,
-        width: 112,
-        height: 132,
+        width: 220,
+        height: 204,
       },
     });
   });

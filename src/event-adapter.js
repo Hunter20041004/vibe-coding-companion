@@ -25,6 +25,14 @@ export function mapEventToState(event = {}) {
     return "thinking";
   }
 
+  if (event.type === "prompt:typing") {
+    return "typing";
+  }
+
+  if (event.type === "prompt:stuck") {
+    return "stuck";
+  }
+
   if (event.type === "turn:complete") {
     return "waiting";
   }

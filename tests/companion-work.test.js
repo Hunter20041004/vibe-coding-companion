@@ -38,7 +38,7 @@ describe("Companion work interpreter", () => {
       },
       brainReaction: {
         quiet: false,
-        speech: "連續測試失敗。用 diagnose 先縮小範圍。",
+        speech: "先縮小錯誤範圍。可用 diagnose。",
         gesture: "point",
       },
     });

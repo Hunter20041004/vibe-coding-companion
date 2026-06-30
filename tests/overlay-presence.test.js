@@ -138,7 +138,7 @@ describe("Overlay presence", () => {
     expect(overlayWindow.show).toHaveBeenCalledTimes(1);
   });
 
-  it("uses a lower-heat default cadence for foreground polling", () => {
+  it("uses a responsive default cadence for foreground polling", () => {
     vi.useFakeTimers();
     const overlayWindow = {
       show: vi.fn(),
@@ -157,10 +157,10 @@ describe("Overlay presence", () => {
     controller.start();
     expect(detectForeground).toHaveBeenCalledTimes(1);
 
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(799);
     expect(detectForeground).toHaveBeenCalledTimes(1);
 
-    vi.advanceTimersByTime(1500);
+    vi.advanceTimersByTime(1);
     expect(detectForeground).toHaveBeenCalledTimes(2);
 
     controller.stop();
@@ -220,10 +220,10 @@ describe("Overlay presence", () => {
 
     expect(overlayWindow.setBounds).toHaveBeenCalledWith(
       {
-        x: 92,
+        x: 80,
         y: 333,
-        width: 132,
-        height: 156,
+        width: 220,
+        height: 204,
       },
       true
     );
@@ -251,10 +251,10 @@ describe("Overlay presence", () => {
 
     expect(overlayWindow.setBounds).toHaveBeenCalledWith(
       {
-        x: 92,
-        y: 528,
-        width: 132,
-        height: 156,
+        x: 80,
+        y: 464,
+        width: 220,
+        height: 204,
       },
       true
     );
@@ -281,8 +281,8 @@ describe("Overlay presence", () => {
 
     const [bounds] = overlayWindow.setBounds.mock.calls[0];
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(240);
-    expect(bounds.width).toBeLessThanOrEqual(132);
-    expect(bounds.height).toBeLessThanOrEqual(156);
+    expect(bounds.width).toBeLessThanOrEqual(240);
+    expect(bounds.height).toBeLessThanOrEqual(220);
   });
 
   it("resolves visible foreground placement through one policy interface", () => {

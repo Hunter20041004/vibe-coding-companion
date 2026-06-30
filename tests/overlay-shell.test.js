@@ -50,6 +50,49 @@ describe("Codex companion overlay shell", () => {
     );
   });
 
+  it("uses prompt typing as motion-only activity without showing a bubble", () => {
+    document.body.innerHTML = '<main id="overlay"></main>';
+
+    const overlay = mountOverlay(document.querySelector("#overlay"), {
+      eventUrl: null,
+    });
+
+    overlay.sendEvent({
+      type: "prompt:typing",
+      source: "accessibility",
+      provider: "codex",
+      appName: "Codex",
+      prompt: "private prompt",
+    });
+
+    expect(document.querySelector("[data-agent-state]").textContent).toBe(
+      "typing"
+    );
+    expect(document.querySelector("[data-overlay-root]").dataset.overlayState)
+      .toBe("typing");
+    expect(document.querySelector("[data-dialogue-bubble]").hidden).toBe(true);
+    expect(document.querySelector("[data-dialogue-bubble]").textContent).toBe("");
+  });
+
+  it("uses stuck motion for settled drafts without a confident hint", () => {
+    document.body.innerHTML = '<main id="overlay"></main>';
+
+    const overlay = mountOverlay(document.querySelector("#overlay"), {
+      eventUrl: null,
+    });
+
+    overlay.sendEvent({
+      type: "prompt:stuck",
+      source: "prompt-draft",
+      provider: "codex",
+    });
+
+    expect(document.querySelector("[data-agent-state]").textContent).toBe(
+      "stuck"
+    );
+    expect(document.querySelector("[data-dialogue-bubble]").hidden).toBe(true);
+  });
+
   it("keeps AI reaction metadata for animation without adding visible HUD text", () => {
     document.body.innerHTML = '<main id="overlay"></main>';
 
@@ -100,7 +143,7 @@ describe("Codex companion overlay shell", () => {
 
     expect(bubble.hidden).toBe(false);
     expect(bubble.textContent).toBe(
-      "用 diagnose。先重現錯誤，再縮小範圍。"
+      "先縮小錯誤範圍。可用 diagnose。"
     );
     expect(document.querySelector("[data-overlay-root]").dataset.companionGesture)
       .toBe("point");
@@ -135,7 +178,7 @@ describe("Codex companion overlay shell", () => {
     const bubble = document.querySelector("[data-dialogue-bubble]");
 
     expect(bubble.hidden).toBe(false);
-    expect(bubble.textContent).toBe("用 diagnose：重現最小失敗案例。");
+    expect(bubble.textContent).toBe("先縮小錯誤範圍。可用 diagnose。");
     expect(document.querySelector("[data-overlay-root]").dataset.companionGesture)
       .toBe("point");
   });
@@ -173,7 +216,7 @@ describe("Codex companion overlay shell", () => {
     expect(document.querySelector("[data-overlay-root]").dataset.activeCharacter)
       .toBe("foam-ghost");
     expect(document.querySelector("[data-dialogue-bubble]").textContent)
-      .toBe("慢慢來：補上錯誤訊息、重現步驟或測試指令。");
+      .toBe("先縮小錯誤範圍。可用 diagnose。");
   });
 
   it("passes the active character into overlay canvas drawing", () => {
@@ -253,6 +296,58 @@ describe("Codex companion overlay shell", () => {
     vi.useRealTimers();
   });
 
+  it("preserves advice received while hidden and shows it after the overlay becomes visible", () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '<main id="overlay"></main>';
+    const listeners = new Map();
+    const documentRef = {
+      visibilityState: "hidden",
+      addEventListener: vi.fn((event, listener) => {
+        listeners.set(event, listener);
+      }),
+      removeEventListener: vi.fn(),
+    };
+
+    const overlay = mountOverlay(document.querySelector("#overlay"), {
+      eventUrl: null,
+      animationEnabled: true,
+      documentRef,
+      requestAnimationFrameImpl: vi.fn(),
+      cancelAnimationFrameImpl: vi.fn(),
+    });
+
+    overlay.sendEvent({
+      type: "ai:decision",
+      state: "error",
+      intensity: "high",
+      skillHint: {
+        skill: "diagnose",
+        confidence: "high",
+      },
+    });
+
+    vi.advanceTimersByTime(5000);
+    documentRef.visibilityState = "visible";
+    listeners.get("visibilitychange")();
+
+    expect(document.querySelector("[data-agent-state]").textContent).toBe(
+      "error"
+    );
+    expect(document.querySelector("[data-dialogue-bubble]").hidden).toBe(false);
+    expect(document.querySelector("[data-dialogue-bubble]").textContent).toBe(
+      "先縮小錯誤範圍。可用 diagnose。"
+    );
+
+    vi.advanceTimersByTime(4199);
+    expect(document.querySelector("[data-dialogue-bubble]").hidden).toBe(false);
+
+    vi.advanceTimersByTime(1);
+    expect(document.querySelector("[data-dialogue-bubble]").hidden).toBe(true);
+
+    overlay.destroy();
+    vi.useRealTimers();
+  });
+
   it("uses work context to speak after repeated raw failed-test events", () => {
     document.body.innerHTML = '<main id="overlay"></main>';
 
@@ -278,7 +373,7 @@ describe("Codex companion overlay shell", () => {
     );
     expect(bubble.hidden).toBe(false);
     expect(bubble.textContent).toBe(
-      "連續測試失敗。用 diagnose 先縮小範圍。"
+      "先縮小錯誤範圍。可用 diagnose。"
     );
   });
 

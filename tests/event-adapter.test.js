@@ -7,6 +7,8 @@ describe("Companion event adapter", () => {
     const adapter = createEventAdapter((state) => states.push(state));
 
     adapter.sendEvent({ type: "prompt:submitted" });
+    adapter.sendEvent({ type: "prompt:typing" });
+    adapter.sendEvent({ type: "prompt:stuck" });
     adapter.sendEvent({ type: "tool:start", tool: "read" });
     adapter.sendEvent({ type: "tool:start", tool: "edit" });
     adapter.sendEvent({ type: "tool:start", tool: "test" });
@@ -17,6 +19,8 @@ describe("Companion event adapter", () => {
 
     expect(states).toEqual([
       "thinking",
+      "typing",
+      "stuck",
       "reading",
       "coding",
       "testing",

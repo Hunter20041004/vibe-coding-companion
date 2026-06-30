@@ -52,10 +52,10 @@ const IDLE_WANDER = {
 
 const ACTIVE_RAIL = {
   largeThreshold: 900,
-  width: 132,
-  height: 156,
-  narrowWidth: 112,
-  narrowHeight: 132,
+  width: 240,
+  height: 220,
+  narrowWidth: 220,
+  narrowHeight: 204,
   right: 28,
   narrowRight: 18,
   topGuard: 56,
@@ -81,12 +81,12 @@ const ADAPTIVE_SIZE = {
 };
 
 const ACTIVE_RAIL_SIZE = {
-  minWidth: 112,
-  maxWidth: 132,
+  minWidth: 220,
+  maxWidth: 240,
   widthRatio: 1,
-  minHeight: 132,
-  maxHeight: 156,
-  heightRatio: 1.18,
+  minHeight: 204,
+  maxHeight: 220,
+  heightRatio: 0.92,
 };
 
 const ACTIVE_STATES = new Set(["reading", "coding", "testing", "error", "success"]);
@@ -524,51 +524,73 @@ function createBoundsCandidates({
   state,
   settings = {},
 }) {
-  const margin = Math.max(12, getSafeMargin(settings));
-  const { width, height } = preferredBounds;
-  const minX = targetBounds.x + margin;
-  const maxX = targetBounds.x + targetBounds.width - margin - width;
-  const minY = targetBounds.y + ACTIVE_RAIL.topGuard;
-  const maxY = targetBounds.y + targetBounds.height - ACTIVE_RAIL.bottomGuard - height;
-  const clampedMaxX = Math.max(minX, maxX);
-  const clampedMaxY = Math.max(minY, maxY);
   const yRatio = ACTIVE_RAIL.yRatios[state] ?? 0.24;
-  const activeY = clamp(
-    targetBounds.y + Math.round(targetBounds.height * yRatio),
-    minY,
-    clampedMaxY
-  );
-  const centerY = clamp(
-    targetBounds.y + Math.round((targetBounds.height - height) / 2),
-    minY,
-    clampedMaxY
-  );
-  const xPositions = [
-    preferredBounds.x,
-    minX,
-    clampedMaxX,
-    targetBounds.x + Math.round((targetBounds.width - width) / 2),
-  ].map((x) => clamp(Math.round(x), minX, clampedMaxX));
-  const yPositions = [
-    preferredBounds.y,
-    activeY,
-    minY,
-    centerY,
-    clampedMaxY,
-  ].map((y) => clamp(Math.round(y), minY, clampedMaxY));
+  const margin = getSafeMargin(settings);
+  const sizes = createCandidateSizes(preferredBounds);
   const seen = new Set();
   const candidates = [];
 
-  for (const x of xPositions) {
-    for (const y of yPositions) {
-      const key = `${x}:${y}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      candidates.push({ x, y, width, height });
+  for (const { width, height } of sizes) {
+    const minX = targetBounds.x + margin;
+    const maxX = targetBounds.x + targetBounds.width - margin - width;
+    const minY = targetBounds.y + ACTIVE_RAIL.topGuard;
+    const maxY =
+      targetBounds.y + targetBounds.height - ACTIVE_RAIL.bottomGuard - height;
+    const clampedMaxX = Math.max(minX, maxX);
+    const clampedMaxY = Math.max(minY, maxY);
+    const activeY = clamp(
+      targetBounds.y + Math.round(targetBounds.height * yRatio),
+      minY,
+      clampedMaxY
+    );
+    const centerY = clamp(
+      targetBounds.y + Math.round((targetBounds.height - height) / 2),
+      minY,
+      clampedMaxY
+    );
+    const xPositions = [
+      preferredBounds.x,
+      minX,
+      clampedMaxX,
+      targetBounds.x + Math.round((targetBounds.width - width) / 2),
+    ].map((x) => clamp(Math.round(x), minX, clampedMaxX));
+    const yPositions = [
+      preferredBounds.y,
+      activeY,
+      minY,
+      centerY,
+      clampedMaxY,
+    ].map((y) => clamp(Math.round(y), minY, clampedMaxY));
+
+    for (const x of xPositions) {
+      for (const y of yPositions) {
+        const key = `${x}:${y}:${width}:${height}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        candidates.push({ x, y, width, height });
+      }
     }
   }
 
   return candidates;
+}
+
+function createCandidateSizes(preferredBounds) {
+  const sizes = [
+    {
+      width: preferredBounds.width,
+      height: preferredBounds.height,
+    },
+  ];
+
+  if (preferredBounds.width > ACTIVE_RAIL_SIZE.minWidth) {
+    sizes.push({
+      width: ACTIVE_RAIL_SIZE.minWidth,
+      height: Math.min(preferredBounds.height, ACTIVE_RAIL_SIZE.minHeight),
+    });
+  }
+
+  return sizes;
 }
 
 function normalizeAvoidRegions(avoidRegions = []) {

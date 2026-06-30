@@ -262,6 +262,20 @@ describe("Vibe coding companion shell", () => {
     expect(drawFrame({ characterId: "green-phosphor-pixel" }).fillStyles)
       .toContain("#9cff6a");
   });
+
+  it("draws distinct silhouettes for each built-in character", () => {
+    const signatures = [
+      "cosmic-jellyfish",
+      "foam-ghost",
+      "green-phosphor-pixel",
+    ].map((characterId) =>
+      drawFrame({ characterId }).pixels
+        .map(({ x, y, width, height }) => `${x},${y},${width},${height}`)
+        .join("|")
+    );
+
+    expect(new Set(signatures)).toHaveLength(3);
+  });
 });
 
 function screenText(text) {

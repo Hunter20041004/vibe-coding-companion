@@ -157,8 +157,8 @@ describe("Guided readiness", () => {
     expect(readiness.items.find((item) => item.id === "ai-key")).toEqual(
       expect.objectContaining({
         state: "optional",
-        label: "AI key optional",
-        action: expect.stringContaining("Vision context"),
+        label: "AI key 可稍後設定",
+        action: expect.stringContaining("畫面分析"),
       })
     );
   });

@@ -166,11 +166,21 @@ describe("Overlay window", () => {
         state: "coding",
       })
     ).toEqual({
-      x: 960,
+      x: 852,
       y: 333,
-      width: 132,
-      height: 156,
+      width: 240,
+      height: 220,
     });
+  });
+
+  it("gives active advice enough horizontal room to stay readable", () => {
+    const bounds = createOverlayBoundsInsideTarget({
+      targetBounds: { x: 80, y: 44, width: 1040, height: 760 },
+      state: "coding",
+    });
+
+    expect(bounds.width).toBeGreaterThanOrEqual(240);
+    expect(bounds.height).toBeGreaterThanOrEqual(190);
   });
 
   it("honors a left preferred side for active work placement", () => {
@@ -186,8 +196,8 @@ describe("Overlay window", () => {
     ).toEqual({
       x: 108,
       y: 333,
-      width: 132,
-      height: 156,
+      width: 240,
+      height: 220,
     });
   });
 
@@ -198,10 +208,10 @@ describe("Overlay window", () => {
         state: "reading",
       })
     ).toEqual({
-      x: 960,
+      x: 852,
       y: 181,
-      width: 132,
-      height: 156,
+      width: 240,
+      height: 220,
     });
   });
 
@@ -212,10 +222,10 @@ describe("Overlay window", () => {
         state: "testing",
       })
     ).toEqual({
-      x: 960,
-      y: 515,
-      width: 132,
-      height: 156,
+      x: 852,
+      y: 464,
+      width: 240,
+      height: 220,
     });
   });
 
@@ -226,10 +236,10 @@ describe("Overlay window", () => {
         state: "error",
       })
     ).toEqual({
-      x: 960,
+      x: 852,
       y: 112,
-      width: 132,
-      height: 156,
+      width: 240,
+      height: 220,
     });
   });
 
@@ -240,10 +250,10 @@ describe("Overlay window", () => {
         state: "success",
       })
     ).toEqual({
-      x: 960,
+      x: 852,
       y: 363,
-      width: 132,
-      height: 156,
+      width: 240,
+      height: 220,
     });
   });
 
@@ -256,8 +266,8 @@ describe("Overlay window", () => {
         bounds.x + bounds.width <= targetBounds.x + 260 ||
         bounds.x >= targetBounds.x + targetBounds.width - 360;
 
-      expect(bounds.width).toBeLessThanOrEqual(156);
-      expect(bounds.height).toBeLessThanOrEqual(180);
+      expect(bounds.width).toBeLessThanOrEqual(240);
+      expect(bounds.height).toBeLessThanOrEqual(220);
       expect(outsideCenter).toBe(true);
       expect(bounds.y).toBeGreaterThanOrEqual(targetBounds.y + 56);
       expect(bounds.y + bounds.height).toBeLessThanOrEqual(
@@ -278,8 +288,8 @@ describe("Overlay window", () => {
       avoidRegions,
     });
 
-    expect(bounds.width).toBeLessThanOrEqual(132);
-    expect(bounds.height).toBeLessThanOrEqual(156);
+    expect(bounds.width).toBeLessThanOrEqual(240);
+    expect(bounds.height).toBeLessThanOrEqual(220);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(260);
     for (const region of avoidRegions) {
       expect(rectsOverlap(bounds, region)).toBe(false);
@@ -332,8 +342,8 @@ describe("Overlay window", () => {
         },
       })
     ).toMatchObject({
-      width: 152,
-      height: 179,
+      width: 276,
+      height: 253,
     });
 
     const normalSpeed = createOverlayBoundsInsideTarget({

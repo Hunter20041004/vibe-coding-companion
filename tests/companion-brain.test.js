@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createCompanionBrain } from "../src/companion-brain.js";
 
 describe("Companion brain", () => {
-  it("turns next-step advice into the primary companion speech", () => {
+  it("uses the high-confidence skill hint instead of next-step prompt advice copy", () => {
     const brain = createCompanionBrain({ getNow: () => 1000 });
 
     expect(
@@ -28,7 +28,7 @@ describe("Companion brain", () => {
       })
     ).toEqual({
       state: "debugging",
-      speech: "用 diagnose：重現最小失敗案例。",
+      speech: "先縮小錯誤範圍。可用 diagnose。",
       gesture: "point",
       priority: "high",
       ttlMs: 4200,
@@ -36,7 +36,7 @@ describe("Companion brain", () => {
     });
   });
 
-  it("turns a failing-test skill hint into a short actionable companion line", () => {
+  it("turns a high-confidence skill hint into the fixed proactive bubble copy", () => {
     const brain = createCompanionBrain({ getNow: () => 1000 });
 
     expect(
@@ -54,7 +54,7 @@ describe("Companion brain", () => {
       })
     ).toEqual({
       state: "debugging",
-      speech: "用 diagnose。先重現錯誤，再縮小範圍。",
+      speech: "先縮小錯誤範圍。可用 diagnose。",
       gesture: "point",
       priority: "high",
       ttlMs: 4200,
@@ -107,6 +107,30 @@ describe("Companion brain", () => {
           action: "用 TDD 先寫一個能驗證目前目標的小測試。",
           skill: "tdd",
           priority: "low",
+        },
+      })
+    ).toEqual({
+      state: "coding",
+      speech: "",
+      gesture: "idle",
+      priority: "low",
+      ttlMs: 0,
+      quiet: true,
+    });
+  });
+
+  it("stays quiet for low-confidence skill hints", () => {
+    const brain = createCompanionBrain({ getNow: () => 5750 });
+
+    expect(
+      brain.react({
+        type: "ai:decision",
+        state: "coding",
+        intensity: "medium",
+        skillHint: {
+          skill: "tdd",
+          confidence: "low",
+          reason: "不確定時先用 TDD 拆一個小的可驗證切片。",
         },
       })
     ).toEqual({
@@ -174,7 +198,7 @@ describe("Companion brain", () => {
       )
     ).toEqual({
       state: "coding",
-      speech: "用 frontend-design：檢查版面。",
+      speech: "先檢查畫面狀態。可用 frontend-design。",
       gesture: "point",
       priority: "medium",
       ttlMs: 3600,
@@ -205,7 +229,7 @@ describe("Companion brain", () => {
       )
     ).toEqual({
       state: "debugging",
-      speech: "連續測試失敗。用 diagnose 先縮小範圍。",
+      speech: "先縮小錯誤範圍。可用 diagnose。",
       gesture: "point",
       priority: "high",
       ttlMs: 4200,
@@ -234,7 +258,7 @@ describe("Companion brain", () => {
           lastMeaningfulEventAt: 9500,
         }
       ).speech
-    ).toBe("連續測試失敗。用 diagnose 先縮小範圍。");
+    ).toBe("先縮小錯誤範圍。可用 diagnose。");
   });
 
   it("stays quiet during low-friction repeated coding work", () => {

@@ -7,6 +7,7 @@ const DIRECT_PROMPT_APPS = ["codex", "claude", "claude code"];
 
 export function createPromptDraftWatcher({
   readFocusedPrompt = detectMacPromptDraft,
+  emitPromptTyping = postPromptTyping,
   emitPromptDraft = postPromptDraft,
   getNow = () => Date.now(),
   settleMs = 500,
@@ -42,6 +43,11 @@ export function createPromptDraftWatcher({
       if (prompt !== pendingPrompt) {
         pendingPrompt = prompt;
         pendingChangedAt = now;
+        try {
+          await emitPromptTyping(createTypingMetadata(snapshot));
+        } catch {
+          // Typing motion is best-effort; settled draft analysis can still proceed.
+        }
         return null;
       }
 
@@ -130,6 +136,33 @@ export async function postPromptDraft({
   return response.json();
 }
 
+export async function postPromptTyping({
+  source = "accessibility",
+  provider = null,
+  appName = "",
+  windowTitle = "",
+  eventUrl = process.env.EVENT_URL ?? "http://127.0.0.1:5174/events",
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const response = await fetchImpl(eventUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      type: "prompt:typing",
+      source,
+      ...(provider ? { provider } : {}),
+      ...(appName ? { appName } : {}),
+      ...(windowTitle ? { windowTitle } : {}),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to emit prompt typing: HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
 export function isAgentPromptInput(snapshot = {}) {
   return (
     TEXT_INPUT_ROLES.has(String(snapshot.focusedRole ?? "")) &&
@@ -139,6 +172,22 @@ export function isAgentPromptInput(snapshot = {}) {
 
 function normalizePrompt(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function createTypingMetadata(snapshot = {}) {
+  return {
+    source: "accessibility",
+    provider: providerForApp(snapshot.appName),
+    appName: String(snapshot.appName ?? ""),
+    windowTitle: String(snapshot.windowTitle ?? ""),
+  };
+}
+
+function providerForApp(appName = "") {
+  const app = String(appName).toLowerCase();
+  if (app.includes("claude")) return "claude-code";
+  if (app.includes("codex")) return "codex";
+  return "";
 }
 
 function isDirectPromptApp(appName = "") {

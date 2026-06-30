@@ -9,6 +9,7 @@ import {
   listCharacterProfiles,
   normalizeCharacterId,
 } from "./character-profiles.js";
+import { drawBlob } from "./app.js";
 import { createPreferenceStore } from "./preferences.js";
 import { recommendSkillForTask } from "./skill-recommender.js";
 
@@ -24,6 +25,7 @@ const DEFAULT_OVERLAY_SETTINGS_ENDPOINT =
 const DEFAULT_VISION_ENDPOINT = "http://127.0.0.1:5174/vision/context";
 const DEFAULT_PLACEMENT_DIAGNOSTIC_ENDPOINT =
   "http://127.0.0.1:5174/placement/diagnostic";
+const DEFAULT_METRICS_ENDPOINT = "http://127.0.0.1:5174/companion/metrics";
 const DEFAULT_MODEL = "gemma-4-31b-it";
 
 export function mountSetupKeyPage(
@@ -38,6 +40,7 @@ export function mountSetupKeyPage(
     overlaySettingsEndpoint = DEFAULT_OVERLAY_SETTINGS_ENDPOINT,
     visionEndpoint = DEFAULT_VISION_ENDPOINT,
     placementDiagnosticEndpoint = DEFAULT_PLACEMENT_DIAGNOSTIC_ENDPOINT,
+    metricsEndpoint = DEFAULT_METRICS_ENDPOINT,
     captureScreenFrame = captureScreenFrameOnce,
     model = DEFAULT_MODEL,
     promptDraftDelayMs = 450,
@@ -58,10 +61,15 @@ export function mountSetupKeyPage(
       <div class="setup-panel">
         <header class="setup-header">
           <div>
-            <p class="setup-kicker">Daily coding companion</p>
-            <h1>Companion Dashboard</h1>
+            <p class="setup-kicker">Vibe coding 小精靈</p>
+            <h1>Codex / Claude Code 低調陪伴</h1>
+            <p class="setup-intro" data-dashboard-intro>
+              小精靈會在你使用 Codex / Claude Code 時低調陪伴，只有在高信心時提醒可用的 Skill。
+            </p>
           </div>
-          <button class="ghost-button" data-refresh-status type="button">更新</button>
+          <button class="ghost-button" data-refresh-status type="button">
+            同步狀態
+          </button>
         </header>
 
         <section
@@ -70,11 +78,15 @@ export function mountSetupKeyPage(
           data-dashboard-section="companion-stage"
         >
           <div class="stage-orb" data-stage-orb aria-hidden="true">
-            <span class="stage-orb-core"></span>
-            <span class="stage-orb-tail"></span>
+            <canvas
+              data-stage-character-canvas
+              data-character-id="cosmic-jellyfish"
+              width="220"
+              height="220"
+            ></canvas>
           </div>
           <div class="stage-copy">
-            <p class="panel-label">Companion Stage</p>
+            <p class="panel-label">小精靈舞台</p>
             <h2 data-active-character-name>宇宙水母</h2>
             <p class="stage-tagline" data-active-character-tagline>冷靜導航</p>
             <p class="stage-bubble" data-active-character-bubble>
@@ -82,24 +94,162 @@ export function mountSetupKeyPage(
             </p>
           </div>
           <div class="stage-status">
-            <span data-stage-work-state>checking</span>
+            <span data-stage-work-state>檢查中</span>
             <strong data-stage-next-step>本機 companion 啟動清單</strong>
+          </div>
+        </section>
+
+        <section
+          class="live-status-panel"
+          data-live-status
+          data-dashboard-section="live-status"
+        >
+          <div>
+            <p class="panel-label">Live Status</p>
+            <h2>目前偵測</h2>
+          </div>
+          <dl class="live-status-grid">
+            <div>
+              <dt>Provider</dt>
+              <dd data-live-provider>unknown</dd>
+            </div>
+            <div>
+              <dt>Typing</dt>
+              <dd data-live-typing>quiet</dd>
+            </div>
+            <div>
+              <dt>Focus</dt>
+              <dd data-live-focus>none</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section
+          class="prompt-coach-panel"
+          data-prompt-coach-panel
+          data-dashboard-section="try-skill-hint"
+        >
+          <div class="prompt-coach-top">
+            <div>
+              <p class="panel-label">Try Skill Hint</p>
+              <p class="decision-line" data-prompt-coach-status>
+                模擬 settled prompt draft，只顯示高信心 Skill。
+              </p>
+            </div>
+            <span class="prompt-coach-state" data-prompt-coach-state>等待</span>
+          </div>
+          <label class="setup-field prompt-coach-field">
+            <span>Skill hint simulator</span>
+            <textarea
+              data-prompt-draft-input
+              rows="4"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="例如：fix the failing checkout test and find the smallest repro"
+            ></textarea>
+          </label>
+          <section class="polished-prompt-panel" data-polished-prompt-panel hidden>
+            <div>
+              <p class="panel-label">可直接貼給 Codex</p>
+              <p class="polished-prompt" data-polished-prompt></p>
+            </div>
+            <button
+              class="copy-prompt-button"
+              data-copy-polished-prompt
+              type="button"
+              disabled
+            >
+              複製 prompt
+            </button>
+          </section>
+          <p class="privacy-note" data-privacy-note>
+            只會用草稿暫時判斷 Skill；事件紀錄只保留 skill、confidence 和 scenario。
+            畫面分析只會在你按下按鈕後做一次，AI key 也可以之後再設定。
+          </p>
+        </section>
+
+        <section
+          class="feedback-metrics-panel"
+          data-feedback-metrics
+          data-dashboard-section="feedback-metrics"
+        >
+          <div class="section-heading">
+            <div>
+              <p class="panel-label">Feedback Metrics</p>
+              <h2>本機提醒成效</h2>
+            </div>
+            <button class="ghost-button" data-refresh-metrics type="button">
+              更新
+            </button>
+          </div>
+          <dl class="feedback-grid">
+            <div>
+              <dt>Shown</dt>
+              <dd data-feedback-hints-shown>0</dd>
+            </div>
+            <div>
+              <dt>Helpful</dt>
+              <dd data-feedback-helpful-count>0</dd>
+            </div>
+            <div>
+              <dt>Snoozed</dt>
+              <dd data-feedback-snoozed-count>0</dd>
+            </div>
+            <div>
+              <dt>Dismissed</dt>
+              <dd data-feedback-dismissed-count>0</dd>
+            </div>
+            <div>
+              <dt>Focus</dt>
+              <dd data-feedback-focus-count>0</dd>
+            </div>
+            <div>
+              <dt>Typing</dt>
+              <dd data-feedback-typing-count>0</dd>
+            </div>
+          </dl>
+          <div class="feedback-actions">
+            <button data-feedback-helpful type="button">有幫助</button>
+            <button data-feedback-snooze type="button">少提醒</button>
+            <button data-feedback-dismiss type="button">知道了</button>
           </div>
         </section>
 
         <section
           class="skill-panel"
           data-skill-panel
-          data-dashboard-section="next-step"
         >
           <div>
-            <p class="panel-label">Next step</p>
-            <p class="next-step-skill" data-skill-hint>尚未推薦。</p>
-            <p class="next-step-title" data-next-step-title>尚未產生建議。</p>
-            <p class="next-step-action" data-next-step-action>等待工作狀態。</p>
-            <p class="next-step-reason" data-next-step-reason>尚未有足夠脈絡。</p>
-            <span class="next-step-priority" data-next-step-priority>low</span>
+            <p class="panel-label">下一步</p>
+            <p class="next-step-skill" data-skill-hint>還不用選技能。</p>
+            <p class="next-step-title" data-next-step-title>
+              先寫一句你想做的東西。
+            </p>
+            <p class="next-step-action" data-next-step-action>
+              我會幫你整理成可直接貼給 Codex 的 prompt。
+            </p>
+            <p class="next-step-reason" data-next-step-reason>
+              目前還沒有足夠脈絡，不會先猜不相關的工具或技能。
+            </p>
+            <span class="next-step-priority" data-next-step-priority>開始</span>
           </div>
+        </section>
+
+        <section
+          class="guided-readiness-panel"
+          data-guided-readiness
+          data-dashboard-section="guided-readiness"
+        >
+          <div class="section-heading">
+            <div>
+              <p class="panel-label">新手準備</p>
+              <h2 data-guided-readiness-title>檢查第一次使用狀態</h2>
+            </div>
+            <button class="ghost-button" data-refresh-readiness type="button">
+              重新檢查
+            </button>
+          </div>
+          <div class="readiness-list" data-readiness-list></div>
         </section>
 
         <section
@@ -110,95 +260,11 @@ export function mountSetupKeyPage(
           <div class="section-heading">
             <div>
               <p class="panel-label">Characters</p>
-              <h2>選擇今天的 companion</h2>
+              <h2>選擇今天的小精靈</h2>
             </div>
-            <span class="section-note">切換後會同步 Dashboard 與 overlay 語氣。</span>
+            <span class="section-note">角色只影響呈現，不改變選中的 Skill。</span>
           </div>
           <div class="character-list" data-character-list></div>
-        </section>
-
-        <section
-          class="prompt-coach-panel"
-          data-prompt-coach-panel
-          data-dashboard-section="prompt-coach"
-        >
-          <div class="prompt-coach-top">
-            <div>
-              <p class="panel-label">Prompt coach</p>
-              <p class="decision-line" data-prompt-coach-status>等待草稿。</p>
-            </div>
-            <span class="prompt-coach-state" data-prompt-coach-state>idle</span>
-          </div>
-          <label class="setup-field prompt-coach-field">
-            <span>Draft</span>
-            <textarea
-              data-prompt-draft-input
-              rows="4"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="fix the failing checkout test..."
-            ></textarea>
-          </label>
-          <p class="privacy-note" data-privacy-note>
-            Short drafts are ignored. raw prompt is not saved in the event stream.
-            Vision context is one approved, one-shot analysis; AI key is optional.
-          </p>
-        </section>
-
-        <section
-          class="guided-readiness-panel"
-          data-guided-readiness
-          data-dashboard-section="guided-readiness"
-        >
-          <div class="section-heading">
-            <div>
-              <p class="panel-label">Guided readiness</p>
-              <h2 data-guided-readiness-title>檢查第一次使用狀態</h2>
-            </div>
-            <button class="ghost-button" data-refresh-readiness type="button">
-              重新檢查
-            </button>
-          </div>
-          <div class="readiness-list" data-readiness-list></div>
-          <section class="runtime-panel" data-runtime-readiness>
-            <div class="runtime-panel-header">
-              <div>
-                <p class="panel-label">Runtime readiness</p>
-                <p class="runtime-title" data-runtime-title>檢查本機服務</p>
-              </div>
-              <code class="runtime-command" data-startup-command>checking</code>
-            </div>
-            <div class="runtime-steps">
-              <div class="runtime-step" data-runtime-server>
-                <span class="runtime-step-state">checking</span>
-                <strong>檢查 runtime</strong>
-                <span>正在讀取本機服務狀態。</span>
-              </div>
-              <div class="runtime-step" data-runtime-ai>
-                <span class="runtime-step-state">checking</span>
-                <strong>檢查 AI key</strong>
-                <span>正在讀取 AI 設定。</span>
-              </div>
-              <div class="runtime-step" data-runtime-overlay>
-                <span class="runtime-step-state">checking</span>
-                <strong>檢查 overlay</strong>
-                <span>正在讀取 overlay 調校。</span>
-              </div>
-            </div>
-            <p class="runtime-action" data-startup-action>
-              正在檢查 Companion Console 啟動狀態。
-            </p>
-          </section>
-        </section>
-
-        <section class="test-panel" data-test-panel>
-          <div>
-            <p class="panel-label">Hook test event</p>
-            <p class="decision-line" data-last-ai-decision>尚未測試。</p>
-          </div>
-          <button class="test-button" data-send-test-event type="button">
-            送 hook 測試事件
-          </button>
         </section>
 
         <details
@@ -207,9 +273,56 @@ export function mountSetupKeyPage(
           data-dashboard-section="diagnostics"
         >
           <summary>
-            <span>Diagnostics</span>
-            <small>placement、hooks、event stream、AI key 與 overlay 調校</small>
+            <span>進階設定</span>
+            <small>權限、事件紀錄、AI key 與桌面小精靈調校</small>
           </summary>
+          <section class="advanced-readiness-panel" data-advanced-readiness>
+            <div class="form-section-header">
+              <p class="panel-label">進階檢查</p>
+              <p class="section-note">
+                Hooks、權限、AI key 與自動讀取都放在這裡，不擋新手先試 prompt。
+              </p>
+            </div>
+            <div class="readiness-list" data-advanced-readiness-list></div>
+          </section>
+          <section class="runtime-panel" data-runtime-readiness>
+            <div class="runtime-panel-header">
+              <div>
+                <p class="panel-label">本機服務</p>
+                <p class="runtime-title" data-runtime-title>檢查本機服務</p>
+              </div>
+              <code class="runtime-command" data-startup-command>checking</code>
+            </div>
+            <div class="runtime-steps">
+              <div class="runtime-step" data-runtime-server>
+                <span class="runtime-step-state">檢查中</span>
+                <strong>檢查本機服務</strong>
+                <span>正在讀取本機服務狀態。</span>
+              </div>
+              <div class="runtime-step" data-runtime-ai>
+                <span class="runtime-step-state">檢查中</span>
+                <strong>檢查 AI key</strong>
+                <span>正在讀取 AI 設定。</span>
+              </div>
+              <div class="runtime-step" data-runtime-overlay>
+                <span class="runtime-step-state">檢查中</span>
+                <strong>檢查桌面小精靈</strong>
+                <span>正在讀取桌面小精靈調校。</span>
+              </div>
+            </div>
+            <p class="runtime-action" data-startup-action>
+              正在檢查本機服務啟動狀態。
+            </p>
+          </section>
+          <section class="test-panel" data-test-panel>
+            <div>
+              <p class="panel-label">測試事件</p>
+              <p class="decision-line" data-last-ai-decision>尚未測試。</p>
+            </div>
+            <button class="test-button" data-send-test-event type="button">
+              送測試事件
+            </button>
+          </section>
           <dl class="status-grid" data-status-grid>
             <div>
               <dt>Server</dt>
@@ -227,7 +340,7 @@ export function mountSetupKeyPage(
           <section class="session-panel" data-session-summary-panel>
             <div class="session-summary-top">
               <div>
-                <p class="panel-label">Session summary</p>
+                <p class="panel-label">工作摘要</p>
                 <p class="session-summary-title" data-session-summary-title>
                   等待工作狀態
                 </p>
@@ -245,7 +358,7 @@ export function mountSetupKeyPage(
           </section>
           <section class="vision-panel" data-vision-panel>
             <div>
-              <p class="panel-label">Vision context</p>
+              <p class="panel-label">畫面分析</p>
               <p class="decision-line" data-vision-context>尚未分析。</p>
             </div>
             <button class="vision-button" data-analyze-screen type="button">
@@ -255,7 +368,7 @@ export function mountSetupKeyPage(
           <section class="placement-panel" data-placement-panel>
             <div class="placement-header">
               <div>
-                <p class="panel-label">Placement diagnostic</p>
+                <p class="panel-label">定位檢查</p>
                 <p class="decision-line" data-placement-mode>尚未檢查。</p>
               </div>
               <button class="ghost-button" data-refresh-placement type="button">
@@ -293,7 +406,7 @@ export function mountSetupKeyPage(
           <p class="setup-status" data-setup-status>等待輸入。</p>
           <form class="overlay-settings-form" data-overlay-settings-form>
             <div class="form-section-header">
-              <p class="panel-label">Overlay calibration</p>
+              <p class="panel-label">桌面小精靈調校</p>
               <p class="section-note">套用後 overlay 會自動讀取，不用重啟。</p>
             </div>
             <div class="control-grid">
@@ -348,10 +461,16 @@ export function mountSetupKeyPage(
   const activeCharacterBubble = root.querySelector(
     "[data-active-character-bubble]"
   );
+  const stageCharacterCanvas = root.querySelector(
+    "[data-stage-character-canvas]"
+  );
   const stageWorkState = root.querySelector("[data-stage-work-state]");
   const stageNextStep = root.querySelector("[data-stage-next-step]");
   const characterList = root.querySelector("[data-character-list]");
   const readinessList = root.querySelector("[data-readiness-list]");
+  const advancedReadinessList = root.querySelector(
+    "[data-advanced-readiness-list]"
+  );
   const guidedReadinessTitle = root.querySelector(
     "[data-guided-readiness-title]"
   );
@@ -363,6 +482,32 @@ export function mountSetupKeyPage(
   const promptDraftInput = root.querySelector("[data-prompt-draft-input]");
   const promptCoachStatus = root.querySelector("[data-prompt-coach-status]");
   const promptCoachState = root.querySelector("[data-prompt-coach-state]");
+  const liveProvider = root.querySelector("[data-live-provider]");
+  const liveTyping = root.querySelector("[data-live-typing]");
+  const liveFocus = root.querySelector("[data-live-focus]");
+  const refreshMetricsButton = root.querySelector("[data-refresh-metrics]");
+  const feedbackHintsShown = root.querySelector("[data-feedback-hints-shown]");
+  const feedbackHelpfulCount = root.querySelector(
+    "[data-feedback-helpful-count]"
+  );
+  const feedbackSnoozedCount = root.querySelector(
+    "[data-feedback-snoozed-count]"
+  );
+  const feedbackDismissedCount = root.querySelector(
+    "[data-feedback-dismissed-count]"
+  );
+  const feedbackFocusCount = root.querySelector("[data-feedback-focus-count]");
+  const feedbackTypingCount = root.querySelector("[data-feedback-typing-count]");
+  const feedbackHelpfulButton = root.querySelector("[data-feedback-helpful]");
+  const feedbackSnoozeButton = root.querySelector("[data-feedback-snooze]");
+  const feedbackDismissButton = root.querySelector("[data-feedback-dismiss]");
+  const polishedPromptPanel = root.querySelector(
+    "[data-polished-prompt-panel]"
+  );
+  const polishedPrompt = root.querySelector("[data-polished-prompt]");
+  const copyPolishedPromptButton = root.querySelector(
+    "[data-copy-polished-prompt]"
+  );
   const refreshPlacementButton = root.querySelector("[data-refresh-placement]");
   const placementMode = root.querySelector("[data-placement-mode]");
   const placementForeground = root.querySelector("[data-placement-foreground]");
@@ -409,6 +554,8 @@ export function mountSetupKeyPage(
   let overlaySettingsState = "checking";
   let promptDraftTimer = 0;
   let lastNextStepAdvice = null;
+  let lastPolishedPrompt = "";
+  let lastSkillHint = null;
   let activeCharacterId = normalizeCharacterId(
     preferenceStore.load().activeCharacterId
   );
@@ -422,7 +569,7 @@ export function mountSetupKeyPage(
     runtimeTitle.textContent = "本機 companion 啟動清單";
     startupCommand.textContent = readiness.primaryCommand;
     startupAction.textContent = readiness.primaryAction;
-    stageWorkState.textContent = statusSnapshot.server;
+    stageWorkState.textContent = formatStageStatus(statusSnapshot.server);
     renderRuntimeStep(runtimeServer, readiness.server);
     renderRuntimeStep(runtimeAi, readiness.ai);
     renderRuntimeStep(runtimeOverlay, readiness.overlay);
@@ -430,23 +577,72 @@ export function mountSetupKeyPage(
   }
 
   function renderGuidedReadiness() {
-    const readiness = createGuidedReadiness({
+    const advancedReadiness = createGuidedReadiness({
       status: statusSnapshot,
       overlaySettingsState,
       permissions: readinessSnapshot.permissions,
       hooks: readinessSnapshot.hooks,
       promptWatcher: readinessSnapshot.promptWatcher,
     });
+    const beginnerReadiness = createBeginnerReadiness();
 
-    guidedReadinessTitle.textContent = readiness.nextItem
-      ? readiness.nextItem.label
-      : "核心流程已可日用";
+    guidedReadinessTitle.textContent = "新手三步驟";
     readinessList.replaceChildren(
-      ...readiness.items.map((item) => createReadinessElement(item))
+      ...beginnerReadiness.map((item) => createReadinessElement(item))
+    );
+    advancedReadinessList.replaceChildren(
+      ...advancedReadiness.items.map((item) =>
+        createReadinessElement(item, { advanced: true })
+      )
     );
   }
 
-  function createReadinessElement(item) {
+  function createBeginnerReadiness() {
+    const serverReady = statusSnapshot.server === "online";
+    const promptReady = promptDraftInput.value.replace(/\s+/g, " ").trim()
+      .length >= 18;
+
+    return [
+      {
+        id: "start-companion",
+        label: serverReady ? "小精靈服務已啟動" : "啟動小精靈服務",
+        state: serverReady ? "ready" : "needs-action",
+        why: serverReady
+          ? "本機服務已連線，可以接收 prompt 和工作事件。"
+          : "先讓本機小精靈服務跑起來，本頁才能同步狀態。",
+        action: serverReady
+          ? "可以直接輸入想做的東西。"
+          : "在終端機執行 npm run companion:start。",
+        command: serverReady ? "" : "npm run companion:start",
+        retryLabel: "重新檢查",
+        skipImpact: "只想先看介面也可以跳過，但自動同步會暫停。",
+      },
+      {
+        id: "pick-character",
+        label: "選一隻小精靈",
+        state: activeCharacterId ? "ready" : "needs-action",
+        why: "不同小精靈會用不同語氣幫你整理下一步。",
+        action: `目前是 ${getCharacterProfile(activeCharacterId).name}。`,
+        command: "",
+        retryLabel: "可隨時切換",
+        skipImpact: "不影響功能，只影響陪伴語氣。",
+      },
+      {
+        id: "try-skill-hint",
+        label: promptReady ? "Skill hint 模擬已足夠" : "試一段 skill hint 草稿",
+        state: promptReady ? "ready" : "needs-action",
+        why: "這裡只測試高信心 Skill 推薦，不會幫你改寫 prompt。",
+        action: promptReady
+          ? "已經可以測試是否出現 skill hint。"
+          : "例如：fix the failing checkout test。",
+        command: "",
+        retryLabel: "輸入後自動檢查",
+        skipImpact: "沒有高信心訊號時，overlay 會保持安靜。",
+      },
+    ];
+  }
+
+  function createReadinessElement(item, { advanced = false } = {}) {
     const documentRef = root.ownerDocument;
     const article = documentRef.createElement("article");
     const topLine = documentRef.createElement("div");
@@ -457,11 +653,15 @@ export function mountSetupKeyPage(
     const meta = documentRef.createElement("p");
 
     article.className = "readiness-item";
-    article.dataset.readinessItem = item.id;
+    if (advanced) {
+      article.dataset.advancedReadinessItem = item.id;
+    } else {
+      article.dataset.readinessItem = item.id;
+    }
     article.dataset.state = item.state;
     topLine.className = "readiness-item-top";
     state.className = "readiness-state";
-    state.textContent = item.state;
+    state.textContent = formatReadinessStateLabel(item.state);
     label.textContent = item.label;
     why.textContent = item.why;
     action.textContent = item.action;
@@ -488,7 +688,7 @@ export function mountSetupKeyPage(
 
     element.dataset.state = step.state;
     state.className = "runtime-step-state";
-    state.textContent = step.stateLabel;
+    state.textContent = formatRuntimeStateLabel(step.stateLabel);
     label.textContent = step.label;
     action.textContent = step.action;
 
@@ -528,6 +728,7 @@ export function mountSetupKeyPage(
   function createCharacterButton(profile) {
     const documentRef = root.ownerDocument;
     const buttonElement = documentRef.createElement("button");
+    const preview = documentRef.createElement("canvas");
     const name = documentRef.createElement("strong");
     const tagline = documentRef.createElement("span");
     const bias = documentRef.createElement("span");
@@ -536,11 +737,21 @@ export function mountSetupKeyPage(
     buttonElement.className = "character-option";
     buttonElement.dataset.characterOption = profile.id;
     buttonElement.dataset.selected = String(profile.id === activeCharacterId);
+    buttonElement.setAttribute(
+      "aria-pressed",
+      String(profile.id === activeCharacterId)
+    );
     buttonElement.style.setProperty("--character-accent", profile.theme.accent);
+    preview.width = 140;
+    preview.height = 140;
+    preview.dataset.characterPreviewCanvas = "";
+    preview.dataset.characterId = profile.id;
+    preview.setAttribute("aria-hidden", "true");
     name.textContent = profile.name;
     tagline.textContent = profile.tagline;
-    bias.textContent = profile.coachingBias;
-    buttonElement.append(name, tagline, bias);
+    bias.textContent = formatCharacterBias(profile.coachingBias);
+    buttonElement.append(preview, name, tagline, bias);
+    drawCharacterCanvas(preview, profile.id, { preview: true });
     buttonElement.addEventListener("click", () => {
       setActiveCharacter(profile.id);
     });
@@ -562,10 +773,12 @@ export function mountSetupKeyPage(
   function renderActiveCharacter() {
     const profile = getCharacterProfile(activeCharacterId);
     setupRoot.dataset.activeCharacter = profile.id;
+    stageCharacterCanvas.dataset.characterId = profile.id;
     activeCharacterName.textContent = profile.name;
     activeCharacterTagline.textContent = profile.tagline;
-    activeCharacterBubble.textContent = `${profile.voice.prefix}先確認 readiness，再接下一步。`;
-    stageWorkState.textContent = statusSnapshot.server;
+    activeCharacterBubble.textContent = getCharacterStarterBubble(profile);
+    stageWorkState.textContent = formatStageStatus(statusSnapshot.server);
+    drawCharacterCanvas(stageCharacterCanvas, profile.id);
   }
 
   async function refreshOverlaySettings() {
@@ -610,7 +823,38 @@ export function mountSetupKeyPage(
     serverStatus.textContent = statusSnapshot.server;
     aiStatus.textContent = statusSnapshot.ai;
     modelStatus.textContent = statusSnapshot.model;
+    liveProvider.textContent = String(statusSnapshot.provider ?? "unknown");
+    liveTyping.textContent = "quiet";
+    liveFocus.textContent = statusSnapshot.server === "online" ? "connected" : "none";
     renderRuntimeReadiness();
+  }
+
+  async function refreshStatusFromToolbar() {
+    refreshButton.disabled = true;
+    refreshButton.textContent = "更新中...";
+
+    try {
+      await Promise.all([refreshStatus(), refreshSessionSummary()]);
+      refreshButton.textContent = "已更新";
+    } catch {
+      refreshButton.textContent = "更新失敗";
+    } finally {
+      refreshButton.disabled = false;
+    }
+  }
+
+  async function refreshReadinessFromToolbar() {
+    refreshReadinessButton.disabled = true;
+    refreshReadinessButton.textContent = "檢查中...";
+
+    try {
+      await Promise.all([refreshStatus(), refreshOverlaySettings()]);
+      refreshReadinessButton.textContent = "已檢查";
+    } catch {
+      refreshReadinessButton.textContent = "檢查失敗";
+    } finally {
+      refreshReadinessButton.disabled = false;
+    }
   }
 
   async function refreshSessionSummary() {
@@ -652,15 +896,27 @@ export function mountSetupKeyPage(
       return;
     }
 
-    skillHint.textContent = formatSkillHint(decision.skillHint);
+    renderSkillHintDecision(decision);
     if (decision.nextStepAdvice) {
       renderNextStepAdvice(decision.nextStepAdvice);
     }
   }
 
+  async function refreshMetrics() {
+    try {
+      const response = await fetchImpl(metricsEndpoint);
+      if (!response.ok) throw new Error("metrics_failed");
+      const payload = await response.json();
+      renderMetrics(payload.metrics);
+    } catch {
+      renderMetrics(null);
+    }
+  }
+
   async function sendPromptDraft(prompt) {
-    promptCoachState.textContent = "checking";
-    promptCoachStatus.textContent = "分析草稿...";
+    promptCoachState.textContent = "分析中";
+    promptCoachStatus.textContent = "正在模擬 Skill hint...";
+    clearPolishedPrompt();
 
     try {
       const response = await fetchImpl(eventsEndpoint, {
@@ -676,21 +932,21 @@ export function mountSetupKeyPage(
       if (!response.ok) throw new Error("prompt_draft_failed");
       const result = await response.json();
       if (!result.accepted) {
-        promptCoachState.textContent = "idle";
-        promptCoachStatus.textContent = "草稿還不夠具體。";
+        promptCoachState.textContent = "等待";
+        promptCoachStatus.textContent = "沒有高信心 Skill，先保持安靜。";
+        renderNextStepAdvice(null);
         return;
       }
 
       const decision = await consoleWorkflow.loadLatestDecision();
-      skillHint.textContent = formatSkillHint(decision?.skillHint);
-      renderNextStepAdvice(decision?.nextStepAdvice);
-      promptCoachState.textContent = "advice";
-      promptCoachStatus.textContent =
-        getAdvicePresentation(decision?.nextStepAdvice)?.action ??
-        "已產生草稿建議。";
+      renderSkillHintDecision(decision);
+      promptCoachState.textContent = "建議";
+      promptCoachStatus.textContent = decision?.skillHint?.bubble ??
+        "已產生 Skill hint。";
+      await refreshMetrics();
       await refreshSessionSummary();
     } catch {
-      promptCoachState.textContent = "error";
+      promptCoachState.textContent = "錯誤";
       promptCoachStatus.textContent = "無法產生建議，請確認 companion server。";
     }
   }
@@ -703,17 +959,57 @@ export function mountSetupKeyPage(
 
     const prompt = promptDraftInput.value.replace(/\s+/g, " ").trim();
     if (prompt.length < 18) {
-      promptCoachState.textContent = "idle";
-      promptCoachStatus.textContent = "等待更完整的草稿。";
+      promptCoachState.textContent = "等待";
+      promptCoachStatus.textContent = "輸入一段草稿來測試 Skill hint。";
+      clearPolishedPrompt();
+      renderNextStepAdvice(null);
+      renderGuidedReadiness();
       return;
     }
 
-    promptCoachState.textContent = "drafting";
-    promptCoachStatus.textContent = "準備建議...";
+    promptCoachState.textContent = "整理中";
+    promptCoachStatus.textContent = "正在檢查是否有高信心 Skill...";
+    clearPolishedPrompt();
+    renderGuidedReadiness();
     promptDraftTimer = setTimeout(() => {
       promptDraftTimer = 0;
       void sendPromptDraft(prompt);
     }, promptDraftDelayMs);
+  }
+
+  function renderPolishedPrompt(prompt) {
+    lastPolishedPrompt = createPolishedPrompt(prompt);
+    polishedPrompt.textContent = lastPolishedPrompt;
+    polishedPromptPanel.hidden = false;
+    copyPolishedPromptButton.disabled = false;
+    nextStepTitle.textContent = "把這段 prompt 貼給 Codex。";
+    nextStepAction.textContent = "先用小版本完成，再請 Codex 跑測試或開瀏覽器檢查。";
+    nextStepReason.textContent = "你的想法已經足夠開始，下一步是讓 agent 有明確範圍。";
+    nextStepPriority.textContent = "可用";
+    stageNextStep.textContent = "可複製 prompt 已準備好";
+  }
+
+  function clearPolishedPrompt() {
+    lastPolishedPrompt = "";
+    polishedPrompt.textContent = "";
+    polishedPromptPanel.hidden = true;
+    copyPolishedPromptButton.disabled = true;
+  }
+
+  async function copyPolishedPrompt() {
+    if (!lastPolishedPrompt) return;
+
+    try {
+      if (!globalThis.navigator?.clipboard?.writeText) {
+        throw new Error("clipboard_unavailable");
+      }
+      await globalThis.navigator.clipboard.writeText(lastPolishedPrompt);
+      copyPolishedPromptButton.textContent = "已複製";
+      promptCoachStatus.textContent = "已複製，可以貼到 Codex 對話框。";
+    } catch {
+      copyPolishedPromptButton.textContent = "複製 prompt";
+      promptCoachStatus.textContent = "無法自動複製，可以直接選取上方文字。";
+    }
   }
 
   async function sendTestEvent() {
@@ -815,14 +1111,74 @@ export function mountSetupKeyPage(
     }
   }
 
+  function renderSkillHintDecision(decision) {
+    const hint = decision?.skillHint ?? null;
+    lastSkillHint = hint?.skill ? hint : null;
+    skillHint.textContent = formatSkillHint(hint);
+    updateLiveStatusFromDecision(decision);
+
+    if (!hint?.skill) {
+      renderNextStepAdvice(null);
+      return;
+    }
+
+    const bubble = hint.bubble ?? `先切到合適流程。可用 ${hint.skill}。`;
+    nextStepTitle.textContent = bubble;
+    nextStepAction.textContent =
+      "Overlay 只會顯示這個 Skill 提醒，不改寫或插入 prompt。";
+    nextStepReason.textContent = String(
+      hint.reason ?? "這是目前最高信心的 Skill。"
+    );
+    nextStepPriority.textContent = formatPriorityLabel(
+      hint.confidence === "high" ? "high" : "low"
+    );
+    stageNextStep.textContent = bubble;
+  }
+
+  function renderMetrics(metrics) {
+    feedbackHintsShown.textContent = String(metrics?.hintsShown ?? 0);
+    feedbackHelpfulCount.textContent = String(metrics?.helpful ?? 0);
+    feedbackSnoozedCount.textContent = String(metrics?.snoozed ?? 0);
+    feedbackDismissedCount.textContent = String(metrics?.dismissed ?? 0);
+    feedbackFocusCount.textContent = String(metrics?.providerFocusChanges ?? 0);
+    feedbackTypingCount.textContent = String(metrics?.promptTypingEvents ?? 0);
+  }
+
+  function updateLiveStatusFromDecision(decision) {
+    if (!decision) return;
+    liveTyping.textContent = decision.state === "typing" ? "typing" : "quiet";
+    liveProvider.textContent = String(decision.provider ?? "unknown");
+    liveFocus.textContent = String(decision.source ?? "none");
+  }
+
+  async function sendHintFeedback(type) {
+    if (!lastSkillHint?.skill) return;
+
+    await fetchImpl(eventsEndpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type,
+        skill: String(lastSkillHint.skill),
+        source: String(lastSkillHint.source ?? "dashboard"),
+        confidence: String(lastSkillHint.confidence ?? "unknown"),
+        scenario: String(lastSkillHint.scenario ?? "unknown"),
+      }),
+    });
+    await refreshMetrics();
+  }
+
   function renderNextStepAdvice(advice) {
     lastNextStepAdvice = advice;
     if (!advice) {
-      nextStepTitle.textContent = "尚未產生建議。";
-      nextStepAction.textContent = "等待工作狀態。";
-      nextStepReason.textContent = "尚未有足夠脈絡。";
-      nextStepPriority.textContent = "low";
-      stageNextStep.textContent = "等待工作狀態";
+      skillHint.textContent = "還不用選技能。";
+      nextStepTitle.textContent = "等待高信心 Skill 訊號。";
+      nextStepAction.textContent =
+        "工作時先讓小精靈觀察，只有高信心時才顯示一個 Skill。";
+      nextStepReason.textContent =
+        "目前還沒有足夠脈絡，不會先猜不相關的工具或技能。";
+      nextStepPriority.textContent = "開始";
+      stageNextStep.textContent = "等待高信心 Skill";
       return;
     }
 
@@ -831,7 +1187,7 @@ export function mountSetupKeyPage(
     nextStepTitle.textContent = String(presentation.title);
     nextStepAction.textContent = String(presentation.action);
     nextStepReason.textContent = String(advice.reason ?? "依目前狀態推測。");
-    nextStepPriority.textContent = String(advice.priority ?? "low");
+    nextStepPriority.textContent = formatPriorityLabel(advice.priority);
     stageNextStep.textContent = String(advice.title ?? "下一步建議");
   }
 
@@ -877,13 +1233,26 @@ export function mountSetupKeyPage(
     button.disabled = input.value.trim().length === 0;
   });
   promptDraftInput.addEventListener("input", schedulePromptDraft);
+  copyPolishedPromptButton.addEventListener("click", () => {
+    void copyPolishedPrompt();
+  });
+  refreshMetricsButton.addEventListener("click", () => {
+    void refreshMetrics();
+  });
+  feedbackHelpfulButton.addEventListener("click", () => {
+    void sendHintFeedback("companion:hint_helpful");
+  });
+  feedbackSnoozeButton.addEventListener("click", () => {
+    void sendHintFeedback("companion:hint_snoozed");
+  });
+  feedbackDismissButton.addEventListener("click", () => {
+    void sendHintFeedback("companion:hint_dismissed");
+  });
   refreshButton.addEventListener("click", () => {
-    void refreshStatus();
-    void refreshSessionSummary();
+    void refreshStatusFromToolbar();
   });
   refreshReadinessButton.addEventListener("click", () => {
-    void refreshStatus();
-    void refreshOverlaySettings();
+    void refreshReadinessFromToolbar();
   });
   testButton.addEventListener("click", sendTestEvent);
   visionButton.addEventListener("click", analyzeScreenContext);
@@ -948,11 +1317,12 @@ export function mountSetupKeyPage(
   input.focus({ preventScroll: true });
   renderActiveCharacter();
   renderCharacters();
+  renderNextStepAdvice(null);
   renderRuntimeReadiness();
   void refreshStatus();
   void refreshSessionSummary();
-  void refreshLatestDecision();
   void refreshOverlaySettings();
+  void refreshMetrics();
 
   return {
     root,
@@ -963,7 +1333,103 @@ export function mountSetupKeyPage(
     sendTestEvent,
     analyzeScreenContext,
     refreshPlacementDiagnostic,
+    refreshMetrics,
   };
+}
+
+function getCharacterStarterBubble(profile) {
+  if (profile.id === "foam-ghost") {
+    return "慢慢來，我只在訊號夠清楚時提醒一個 Skill。";
+  }
+
+  if (profile.id === "green-phosphor-pixel") {
+    return "先觀察工作狀態，高信心時再切到合適 Skill。";
+  }
+
+  return "我會低調陪你工作，只在高信心時提示 Skill。";
+}
+
+function formatCharacterBias(value) {
+  const labels = {
+    navigation: "導航",
+    gentle: "陪伴",
+    testing: "測試",
+  };
+
+  return labels[String(value)] ?? String(value ?? "小幫手");
+}
+
+function createPolishedPrompt(prompt) {
+  const idea = String(prompt ?? "").replace(/\s+/g, " ").trim();
+  const featureHint = inferFeatureHint(idea);
+
+  return [
+    `請幫我把「${idea}」做成一個小而可測的版本。`,
+    `請先確認目標和範圍，然後實作最小可用流程：${featureHint}。`,
+    "請保持介面可愛、清楚、好上手，避免只做靜態展示。",
+    "完成後請跑測試；如果是前端畫面，請用瀏覽器檢查桌面和手機寬度，確認沒有文字重疊或按鈕失效。",
+    "最後請告訴我改了哪些檔案、怎麼測、以及本機預覽網址。",
+  ].join("\n");
+}
+
+function inferFeatureHint(idea) {
+  const lower = idea.toLowerCase();
+  if (
+    lower.includes("番茄鐘") ||
+    lower.includes("pomodoro") ||
+    lower.includes("tomato")
+  ) {
+    return "開始、暫停、重設、工作/休息切換，以及目前倒數狀態";
+  }
+
+  if (
+    lower.includes("dashboard") ||
+    lower.includes("儀表板") ||
+    lower.includes("管理")
+  ) {
+    return "主要狀態、核心操作、空狀態和錯誤/載入狀態";
+  }
+
+  if (
+    lower.includes("app") ||
+    lower.includes("網站") ||
+    lower.includes("頁面") ||
+    lower.includes("介面")
+  ) {
+    return "第一個畫面、主要操作、互動回饋和基本響應式版面";
+  }
+
+  return "核心畫面、主要操作、成功狀態和基本驗證方式";
+}
+
+function drawCharacterCanvas(canvas, characterId, { preview = false } = {}) {
+  if (!canvas) return;
+  if (isJsdomEnvironment()) return;
+
+  drawBlob(canvas, {
+    characterId: normalizeCharacterId(characterId),
+    mode: "snark",
+    mood: "steady",
+    motion: { amplitude: preview ? 0.7 : 1 },
+    pose: getCharacterPreviewPose(characterId),
+    scale: preview ? 0.88 : 1.32,
+    state: "coding",
+    time: 320,
+  });
+}
+
+function getCharacterPreviewPose(characterId) {
+  const poses = {
+    "cosmic-jellyfish": "spark-think",
+    "foam-ghost": "idle-wave",
+    "green-phosphor-pixel": "work-buddy",
+  };
+
+  return poses[normalizeCharacterId(characterId)] ?? "float";
+}
+
+function isJsdomEnvironment() {
+  return globalThis.navigator?.userAgent?.toLowerCase().includes("jsdom");
 }
 
 export async function captureScreenFrameOnce({
@@ -1028,7 +1494,7 @@ function formatVisionContext(context) {
 
 function formatSkillHint(skillHint) {
   if (!skillHint?.skill) {
-    return "尚未推薦。";
+    return "還不用選技能。";
   }
 
   const confidence = skillHint.confidence
@@ -1039,6 +1505,50 @@ function formatSkillHint(skillHint) {
     : "";
 
   return `${String(skillHint.skill)}${confidence}${reason}`;
+}
+
+function formatReadinessStateLabel(state) {
+  const labels = {
+    ready: "已完成",
+    "needs-action": "待處理",
+    optional: "可稍後",
+    checking: "檢查中",
+  };
+
+  return labels[String(state)] ?? String(state ?? "未知");
+}
+
+function formatRuntimeStateLabel(state) {
+  const labels = {
+    ready: "已完成",
+    action: "待處理",
+    missing: "未設定",
+    unknown: "未知",
+    fallback: "預設值",
+    checking: "檢查中",
+  };
+
+  return labels[String(state)] ?? String(state ?? "未知");
+}
+
+function formatStageStatus(status) {
+  const labels = {
+    checking: "檢查中",
+    online: "已連線",
+    offline: "未連線",
+  };
+
+  return labels[String(status)] ?? "檢查中";
+}
+
+function formatPriorityLabel(priority) {
+  const labels = {
+    high: "重要",
+    medium: "建議",
+    low: "可稍後",
+  };
+
+  return labels[String(priority ?? "low")] ?? String(priority ?? "可稍後");
 }
 
 function formatCompactReason(reason) {

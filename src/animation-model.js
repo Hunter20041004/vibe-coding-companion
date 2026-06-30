@@ -61,6 +61,8 @@ function getPosition({ state, anchor, time, motion }) {
 
 function getStateRange(state) {
   if (state === "idle" || state === "waiting") return 3;
+  if (state === "typing") return 7;
+  if (state === "stuck") return 4;
   if (state === "coding") return 8;
   return 6;
 }
@@ -108,6 +110,8 @@ function getPose({ state, reaction = {}, time = 0 }) {
 
   const poses = {
     thinking: "spark-think",
+    typing: "note-hold",
+    stuck: "look-around",
     reading: "inspect",
     coding: "work-buddy",
     testing: "test-watch",

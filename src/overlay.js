@@ -31,6 +31,8 @@ export function mountOverlay(root, options = {}) {
   let settingsTimer = 0;
   let transientTimer = 0;
   let speechTimer = 0;
+  let activeSpeechReaction = null;
+  let pendingTransientReaction = null;
   let lastDrawAt = Number.NEGATIVE_INFINITY;
   let visibilityListener = null;
   const drawBlobImpl = options.drawBlobImpl ?? drawBlob;
@@ -100,10 +102,8 @@ export function mountOverlay(root, options = {}) {
   }
 
   const setState = (nextState, event = {}) => {
-    if (transientTimer) {
-      clearTimeout(transientTimer);
-      transientTimer = 0;
-    }
+    clearTransientTimer();
+    pendingTransientReaction = null;
     const state = agentState.set(nextState);
     const packet = workInterpreter.observeState(state, event);
 
@@ -123,25 +123,20 @@ export function mountOverlay(root, options = {}) {
     const brainReaction = packet.brainReaction;
     overlayRoot.dataset.companionGesture = brainReaction.gesture;
     updateDialogueBubble(dialogueBubble, brainReaction);
-    if (speechTimer) {
-      clearTimeout(speechTimer);
-      speechTimer = 0;
-    }
     if (!brainReaction.quiet && brainReaction.ttlMs > 0) {
-      speechTimer = setTimeout(() => {
-        speechTimer = 0;
-        updateDialogueBubble(dialogueBubble, {
-          quiet: true,
-          speech: "",
-        });
-      }, brainReaction.ttlMs);
+      activeSpeechReaction = brainReaction;
+      scheduleSpeechTimer();
+    } else {
+      activeSpeechReaction = null;
+      clearSpeechTimer();
     }
     vibe = packet.vibe;
     if (isTransientState(state)) {
-      transientTimer = setTimeout(() => {
-        transientTimer = 0;
-        setState("waiting", { type: "transient:settled" });
-      }, options.transientMs ?? 1600);
+      const visibleMs = Math.max(
+        options.transientMs ?? 1600,
+        brainReaction.quiet ? 0 : brainReaction.ttlMs ?? 0
+      );
+      scheduleTransientTimer({ state, visibleMs });
     }
 
     return state;
@@ -220,10 +215,14 @@ export function mountOverlay(root, options = {}) {
     visibilityListener = () => {
       if (isOverlayPageHidden(documentRef)) {
         stopAnimationLoop();
+        clearSpeechTimer();
+        clearTransientTimer();
         return;
       }
 
       startAnimationLoop();
+      scheduleSpeechTimer();
+      schedulePendingTransientTimer();
     };
     documentRef?.addEventListener?.("visibilitychange", visibilityListener);
     startAnimationLoop();
@@ -256,15 +255,68 @@ export function mountOverlay(root, options = {}) {
       if (settingsTimer) {
         clearInterval(settingsTimer);
       }
-      if (transientTimer) {
-        clearTimeout(transientTimer);
-      }
-      if (speechTimer) {
-        clearTimeout(speechTimer);
-      }
+      clearTransientTimer();
+      clearSpeechTimer();
       eventPoller?.stop();
     },
   };
+
+  function clearSpeechTimer() {
+    if (!speechTimer) {
+      return;
+    }
+
+    clearTimeout(speechTimer);
+    speechTimer = 0;
+  }
+
+  function scheduleSpeechTimer() {
+    clearSpeechTimer();
+    if (
+      !activeSpeechReaction ||
+      activeSpeechReaction.quiet ||
+      activeSpeechReaction.ttlMs <= 0 ||
+      isOverlayPageHidden(documentRef)
+    ) {
+      return;
+    }
+
+    speechTimer = setTimeout(() => {
+      speechTimer = 0;
+      activeSpeechReaction = null;
+      updateDialogueBubble(dialogueBubble, {
+        quiet: true,
+        speech: "",
+      });
+    }, activeSpeechReaction.ttlMs);
+  }
+
+  function clearTransientTimer() {
+    if (!transientTimer) {
+      return;
+    }
+
+    clearTimeout(transientTimer);
+    transientTimer = 0;
+  }
+
+  function scheduleTransientTimer({ state, visibleMs }) {
+    pendingTransientReaction = { state, visibleMs };
+    schedulePendingTransientTimer();
+  }
+
+  function schedulePendingTransientTimer() {
+    clearTransientTimer();
+    if (!pendingTransientReaction || isOverlayPageHidden(documentRef)) {
+      return;
+    }
+
+    transientTimer = setTimeout(() => {
+      transientTimer = 0;
+      pendingTransientReaction = null;
+      setState("waiting", { type: "transient:settled" });
+    }, pendingTransientReaction.visibleMs);
+  }
 }
 
 function isTransientState(state) {
@@ -291,7 +343,7 @@ function updateDialogueBubble(bubble, brainReaction = {}) {
 
 function truncateDialogue(value) {
   const text = String(value ?? "").replace(/\s+/g, " ").trim();
-  return text.length > 42 ? `${text.slice(0, 41)}…` : text;
+  return text.length > 56 ? `${text.slice(0, 55)}…` : text;
 }
 
 if (typeof document !== "undefined") {

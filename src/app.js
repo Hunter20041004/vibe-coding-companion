@@ -368,6 +368,12 @@ export function drawBlob(canvas, frame) {
   const shade = frame.mood === "panic" ? palette.panic : palette.shade;
   const face = palette.face;
 
+  if (frame.characterId) {
+    drawCharacterSprite(context, pixel, frame, palette);
+    context.restore();
+    return;
+  }
+
   context.fillStyle = body;
   drawPixels(context, pixel, [
     [-4, -3], [-3, -4], [-2, -4], [-1, -4], [0, -4], [1, -4], [2, -3],
@@ -476,6 +482,160 @@ export function drawBlob(canvas, frame) {
   }
 
   context.restore();
+}
+
+function drawCharacterSprite(context, pixel, frame, palette) {
+  const profile = getCharacterProfile(normalizeCharacterId(frame.characterId));
+
+  if (profile.silhouette === "jellyfish") {
+    drawJellyfishCharacter(context, pixel, frame, palette);
+  } else if (profile.silhouette === "foam") {
+    drawFoamGhostCharacter(context, pixel, frame, palette);
+  } else {
+    drawTerminalPixelCharacter(context, pixel, frame, palette);
+  }
+
+  drawCharacterPoseAccent(context, pixel, frame, palette, profile.silhouette);
+}
+
+function drawJellyfishCharacter(context, pixel, frame, palette) {
+  const shade = frame.mood === "panic" ? palette.panic : palette.shade;
+
+  context.fillStyle = palette.body;
+  drawPixels(context, pixel, [
+    [-2, -5], [-1, -5], [0, -5], [1, -5],
+    [-4, -4], [-3, -4], [-2, -4], [-1, -4], [0, -4], [1, -4], [2, -4], [3, -4],
+    [-5, -3], [-4, -3], [-3, -3], [-2, -3], [-1, -3], [0, -3], [1, -3], [2, -3], [3, -3], [4, -3],
+    [-5, -2], [-4, -2], [-3, -2], [-2, -2], [-1, -2], [0, -2], [1, -2], [2, -2], [3, -2], [4, -2], [5, -2],
+    [-4, -1], [-3, -1], [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1], [3, -1], [4, -1],
+    [-3, 0], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [3, 0],
+  ]);
+
+  context.fillStyle = shade;
+  drawPixels(context, pixel, [
+    [-3, 1], [-1, 1], [1, 1], [3, 1],
+    [-3, 2], [-1, 2], [1, 2], [3, 2],
+    [-4, 3], [-2, 3], [0, 3], [2, 3], [4, 3],
+    [-4, 4], [0, 4], [4, 4],
+  ]);
+
+  context.fillStyle = palette.face;
+  drawCharacterEyes(context, pixel, frame, {
+    defaultEyes: [[-2, -2], [1, -2]],
+    blinkEyes: [[-3, -2], [-2, -2], [1, -2], [2, -2]],
+    lookEyes: [[-3, -2], [0, -2]],
+    mouth: [[-1, -1], [0, -1]],
+  });
+}
+
+function drawFoamGhostCharacter(context, pixel, frame, palette) {
+  const shade = frame.mood === "panic" ? palette.panic : palette.shade;
+
+  context.fillStyle = palette.body;
+  drawPixels(context, pixel, [
+    [-2, -5], [-1, -5], [0, -5], [1, -5],
+    [-3, -4], [-2, -4], [-1, -4], [0, -4], [1, -4], [2, -4],
+    [-4, -3], [-3, -3], [-2, -3], [-1, -3], [0, -3], [1, -3], [2, -3], [3, -3],
+    [-4, -2], [-3, -2], [-2, -2], [-1, -2], [0, -2], [1, -2], [2, -2], [3, -2],
+    [-5, -1], [-4, -1], [-3, -1], [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1], [3, -1], [4, -1],
+    [-5, 0], [-4, 0], [-3, 0], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [3, 0], [4, 0],
+    [-4, 1], [-3, 1], [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1], [3, 1],
+    [-4, 2], [-3, 2], [-2, 2], [-1, 2], [0, 2], [1, 2], [2, 2], [3, 2],
+    [-4, 3], [-2, 3], [-1, 3], [1, 3], [2, 3], [4, 3],
+  ]);
+
+  context.fillStyle = shade;
+  drawPixels(context, pixel, [
+    [-5, 1], [-5, 2], [4, 1], [4, 2],
+    [-3, 4], [0, 4], [3, 4],
+  ]);
+
+  context.fillStyle = palette.face;
+  drawCharacterEyes(context, pixel, frame, {
+    defaultEyes: [[-2, -2], [1, -2]],
+    blinkEyes: [[-3, -2], [-2, -2], [1, -2], [2, -2]],
+    lookEyes: [[-3, -2], [0, -2]],
+    mouth: [[-1, 0], [0, 0]],
+  });
+}
+
+function drawTerminalPixelCharacter(context, pixel, frame, palette) {
+  const shade = frame.mood === "panic" ? palette.panic : palette.shade;
+
+  context.fillStyle = palette.body;
+  drawPixels(context, pixel, [
+    [-3, -6], [3, -6],
+    [-4, -5], [-3, -5], [-2, -5], [-1, -5], [0, -5], [1, -5], [2, -5], [3, -5], [4, -5],
+    [-5, -4], [-4, -4], [-3, -4], [-2, -4], [-1, -4], [0, -4], [1, -4], [2, -4], [3, -4], [4, -4], [5, -4],
+    [-5, -3], [-4, -3], [-3, -3], [-2, -3], [-1, -3], [0, -3], [1, -3], [2, -3], [3, -3], [4, -3], [5, -3],
+    [-5, -2], [-4, -2], [-3, -2], [-2, -2], [-1, -2], [0, -2], [1, -2], [2, -2], [3, -2], [4, -2], [5, -2],
+    [-5, -1], [-4, -1], [-3, -1], [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1], [3, -1], [4, -1], [5, -1],
+    [-5, 0], [-4, 0], [-3, 0], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0],
+    [-4, 1], [-3, 1], [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1],
+    [-3, 2], [-2, 2], [-1, 2], [0, 2], [1, 2], [2, 2], [3, 2],
+    [-4, 4], [-3, 4], [3, 4], [4, 4],
+  ]);
+
+  context.fillStyle = palette.face;
+  drawPixels(context, pixel, [
+    [-3, -3], [-2, -3], [-1, -3], [0, -3], [1, -3], [2, -3], [3, -3],
+    [-3, -2], [-2, -2], [-1, -2], [0, -2], [1, -2], [2, -2], [3, -2],
+    [-3, -1], [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1], [3, -1],
+    [-3, 0], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [3, 0],
+  ]);
+
+  context.fillStyle = shade;
+  if (frame.pose === "idle-blink") {
+    drawPixels(context, pixel, [[-2, -2], [-1, -2], [1, -2], [2, -2]]);
+  } else if (frame.pose === "idle-look") {
+    drawPixels(context, pixel, [[-2, -2], [0, -2]]);
+  } else {
+    drawPixels(context, pixel, [[-2, -2], [2, -2]]);
+  }
+  drawPixels(context, pixel, [[-1, 0], [0, 0], [1, 0]]);
+}
+
+function drawCharacterEyes(context, pixel, frame, eyeMap) {
+  if (frame.pose === "idle-blink") {
+    drawPixels(context, pixel, eyeMap.blinkEyes);
+  } else if (frame.pose === "idle-look") {
+    drawPixels(context, pixel, eyeMap.lookEyes);
+  } else {
+    drawPixels(context, pixel, eyeMap.defaultEyes);
+  }
+
+  drawPixels(context, pixel, eyeMap.mouth);
+}
+
+function drawCharacterPoseAccent(context, pixel, frame, palette, silhouette) {
+  if (frame.pose === "spark-think") {
+    context.fillStyle = "#ffd36f";
+    drawPixels(context, pixel, [[4, -6], [5, -5], [4, -4]]);
+  } else if (frame.pose === "inspect" || frame.pose === "magnify") {
+    context.fillStyle = "#8df8ff";
+    drawPixels(context, pixel, [[4, -1], [5, -1], [4, 0], [5, 0], [6, 1]]);
+  } else if (frame.pose === "work-buddy" || frame.pose === "panic-type") {
+    context.fillStyle = silhouette === "pixel" ? "#ffd36f" : palette.shade;
+    drawPixels(context, pixel, [[-5, 4], [-3, 4], [-1, 4], [1, 4], [3, 4], [5, 4]]);
+  } else if (frame.pose === "test-watch") {
+    context.fillStyle = "#8df8ff";
+    drawPixels(context, pixel, [[4, 2], [5, 2], [6, 2], [5, 3]]);
+  } else if (frame.pose === "quick-startle" || frame.pose === "sweat-pop") {
+    context.fillStyle = "#ff7d99";
+    drawPixels(context, pixel, [[0, -8], [0, -7], [-5, -5], [5, -5]]);
+  } else if (frame.pose === "tiny-celebrate" || frame.pose === "smug-dance") {
+    context.fillStyle = "#ffd36f";
+    drawPixels(context, pixel, [[-6, -5], [5, -5], [6, -4], [-5, -4]]);
+  } else if (frame.pose === "point") {
+    context.fillStyle = "#ffd36f";
+    drawPixels(context, pixel, [[5, -2], [6, -2], [7, -2], [6, -3], [6, -1]]);
+  } else if (frame.pose === "idle-wave") {
+    context.fillStyle = palette.shade;
+    drawPixels(context, pixel, [[5, -3], [6, -4], [6, -5], [-6, 1]]);
+  } else if (frame.pose === "edge-peek" || frame.pose === "peek") {
+    context.fillStyle = palette.shade;
+    drawPixels(context, pixel, [[-6, -1], [5, -1], [6, 0]]);
+  }
 }
 
 function getCharacterPalette(frame = {}) {

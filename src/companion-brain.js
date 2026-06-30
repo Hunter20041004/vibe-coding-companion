@@ -3,12 +3,12 @@ const HIGH_PRIORITY_TTL_MS = 4200;
 const DEFAULT_COOLDOWN_MS = 8000;
 
 const SKILL_SPEECH = {
-  diagnose: "用 diagnose。先重現錯誤，再縮小範圍。",
-  "frontend-design": "用 frontend-design。先穩住版面，再調細節。",
-  "write-a-prd": "用 write-a-prd。先把需求切成可驗證條目。",
-  prototype: "用 prototype。先做一個能玩的版本。",
-  "openai-docs": "用 openai-docs。先查官方說法再改。",
-  tdd: "用 TDD。先寫一個會失敗的小測試。",
+  diagnose: "先縮小錯誤範圍。可用 diagnose。",
+  "frontend-design": "先檢查畫面狀態。可用 frontend-design。",
+  "write-a-prd": "先整理需求範圍。可用 write-a-prd。",
+  prototype: "先做可玩原型。可用 prototype。",
+  "openai-docs": "先查官方文件。可用 openai-docs。",
+  tdd: "先切一個小測試。可用 tdd。",
 };
 
 export function createCompanionBrain({ getNow = () => Date.now() } = {}) {
@@ -49,18 +49,14 @@ function createBrainReaction({ event, workContext }) {
     return createQuietReaction(state);
   }
 
-  const adviceSpeech = createAdviceSpeech(event.nextStepAdvice);
-  if (event.nextStepAdvice && !adviceSpeech) {
-    return createQuietReaction(state);
-  }
-
   const contextReaction = createContextReaction({ event, state, workContext });
-  if (!adviceSpeech && contextReaction) {
+  const hintSpeech = createSkillHintSpeech(event.skillHint);
+  const adviceSkillSpeech = createAdviceSkillSpeech(event.nextStepAdvice);
+  const speech = hintSpeech || adviceSkillSpeech;
+  if (!speech && contextReaction) {
     return contextReaction;
   }
 
-  const skill = normalizeSkill(event.skillHint?.skill);
-  const speech = adviceSpeech || (skill ? SKILL_SPEECH[skill] : normalizeSpeech(event.line));
   if (!speech || state === "idle" || state === "waiting") {
     return createQuietReaction(state);
   }
@@ -69,7 +65,7 @@ function createBrainReaction({ event, workContext }) {
   return {
     state,
     speech,
-    gesture: adviceSpeech || skill ? "point" : getGestureForState(state),
+    gesture: "point",
     priority,
     ttlMs: priority === "high" ? HIGH_PRIORITY_TTL_MS : DEFAULT_TTL_MS,
     quiet: false,
@@ -83,7 +79,7 @@ function createContextReaction({ state, workContext }) {
   ) {
     return {
       state,
-      speech: "連續測試失敗。用 diagnose 先縮小範圍。",
+      speech: SKILL_SPEECH.diagnose,
       gesture: "point",
       priority: "high",
       ttlMs: HIGH_PRIORITY_TTL_MS,
@@ -109,42 +105,27 @@ function createQuietReaction(state) {
   };
 }
 
-function normalizeSkill(skill) {
-  const value = String(skill ?? "").trim();
-  return SKILL_SPEECH[value] ? value : "";
+function createSkillHintSpeech(skillHint) {
+  if (!skillHint || skillHint.confidence !== "high") return "";
+  return skillHint.bubble
+    ? normalizeSpeech(skillHint.bubble)
+    : createSkillSpeech(skillHint.skill);
 }
 
-function createAdviceSpeech(advice) {
+function createAdviceSkillSpeech(advice) {
   if (!advice) return "";
   if (advice.speakable === false) return "";
   const priority = String(advice.priority ?? "low");
   if (!["high", "medium"].includes(priority)) return "";
-  if (advice.presentation?.bubble) {
-    return normalizeSpeech(advice.presentation.bubble);
-  }
 
   const skill = String(advice.skill ?? "").trim();
-  const action = shortenAdviceAction(advice.action ?? advice.title);
-  if (!action) return "";
-
-  return skill ? normalizeSpeech(`用 ${skill}：${stripLeadingSkill(action, skill)}`) : normalizeSpeech(action);
+  return skill ? createSkillSpeech(skill) : "";
 }
 
-function shortenAdviceAction(value) {
-  const text = String(value ?? "").replace(/\s+/g, " ").trim();
-  const firstClause = text.split(/[，,。]/)[0]?.trim() ?? "";
-  return firstClause ? `${firstClause}。` : "";
-}
-
-function stripLeadingSkill(value, skill) {
-  return String(value)
-    .replace(new RegExp(`^用\\s+${escapeRegExp(skill)}\\s*[:：]?\\s*`, "i"), "")
-    .replace(new RegExp(`^使用\\s+${escapeRegExp(skill)}\\s*[:：]?\\s*`, "i"), "")
-    .trim();
-}
-
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function createSkillSpeech(skill) {
+  const value = String(skill ?? "").trim();
+  if (!value) return "";
+  return SKILL_SPEECH[value] ?? `先切到合適流程。可用 ${truncateSkillName(value)}。`;
 }
 
 function normalizeSpeech(value) {
@@ -159,14 +140,6 @@ function getPriority(event) {
   return "medium";
 }
 
-function getGestureForState(state) {
-  const gestures = {
-    error: "startle",
-    debugging: "inspect",
-    success: "celebrate",
-    coding: "nod",
-    testing: "watch",
-  };
-
-  return gestures[state] ?? "observe";
+function truncateSkillName(skill) {
+  return skill.length > 28 ? `${skill.slice(0, 27)}…` : skill;
 }

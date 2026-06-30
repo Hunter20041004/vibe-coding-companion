@@ -69,6 +69,39 @@ describe("Prompt draft watcher", () => {
     });
   });
 
+  it("emits content-free typing activity before settled draft analysis", async () => {
+    let now = 1000;
+    const emitPromptTyping = vi.fn(async () => ({ accepted: true, id: 1 }));
+    const emitPromptDraft = vi.fn(async () => ({ accepted: true, id: 2 }));
+    const readFocusedPrompt = vi.fn(async () => ({
+      appName: "Claude",
+      windowTitle: "Claude Code",
+      focusedRole: "AXTextArea",
+      prompt: "fix failing checkout test",
+    }));
+    const watcher = createPromptDraftWatcher({
+      readFocusedPrompt,
+      emitPromptTyping,
+      emitPromptDraft,
+      getNow: () => now,
+      settleMs: 300,
+      minChars: 12,
+    });
+
+    await watcher.checkOnce();
+    now = 1400;
+    await watcher.checkOnce();
+
+    expect(emitPromptTyping).toHaveBeenCalledTimes(1);
+    expect(emitPromptTyping).toHaveBeenCalledWith({
+      source: "accessibility",
+      provider: "claude-code",
+      appName: "Claude",
+      windowTitle: "Claude Code",
+    });
+    expect(emitPromptDraft).toHaveBeenCalledTimes(1);
+  });
+
   it("does not re-emit unchanged settled drafts", async () => {
     let now = 1000;
     const emitPromptDraft = vi.fn(async () => ({ accepted: true, id: 1 }));

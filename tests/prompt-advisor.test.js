@@ -6,55 +6,49 @@ describe("Prompt advisor", () => {
     expect(createPromptDraftAdvice({ prompt: "fix" })).toBeNull();
   });
 
-  it("suggests diagnose details while the user drafts a bug prompt", () => {
+  it("returns only a high-confidence skill hint while the user drafts a bug prompt", () => {
     expect(
       createPromptDraftAdvice({
         prompt: "fix the failing checkout test, it crashes in CI",
       })
     ).toEqual({
-      title: "Prompt 草稿可補重現線索",
-      action: "補上錯誤訊息、重現步驟或測試指令。",
-      reason: "草稿看起來是在修 bug，但還缺少可重現的線索。",
-      skill: "diagnose",
-      priority: "medium",
-      speakable: true,
       skillHint: {
         skill: "diagnose",
         confidence: "high",
         reason: "適合重現、定位並修復 bug 或測試失敗。",
+        source: "prompt-draft",
+        scenario: "bug",
+        bubble: "先縮小錯誤範圍。可用 diagnose。",
       },
     });
   });
 
-  it("suggests visual verification for UI prompt drafts", () => {
+  it("returns a skill-only hint for UI prompt drafts", () => {
     expect(
       createPromptDraftAdvice({
         prompt: "調整 overlay UI layout，讓提示泡泡更像助手",
       })
-    ).toEqual(
-      expect.objectContaining({
-        title: "Prompt 草稿可補視覺驗證",
-        action: "補上桌面/窄版截圖檢查，確認沒有重疊或遮擋。",
+    ).toEqual({
+      skillHint: {
         skill: "frontend-design",
-      })
-    );
+        confidence: "high",
+        reason: "適合處理 UI、互動、視覺與版面調整。",
+        source: "prompt-draft",
+        scenario: "ui",
+        bubble: "先檢查畫面狀態。可用 frontend-design。",
+      },
+    });
   });
 
-  it("suggests scope for broad drafts before recommending a fallback skill", () => {
+  it("stays quiet when a broad draft has no high-confidence skill", () => {
     expect(
       createPromptDraftAdvice({
         prompt: "improve this feature and make the code better",
       })
-    ).toEqual(
-      expect.objectContaining({
-        title: "Prompt 草稿可補範圍",
-        action: "補上目標檔案、頁面、模組或要保留的限制。",
-        skill: "tdd",
-      })
-    );
+    ).toBeNull();
   });
 
-  it("adds character presentation when prompt advice is requested for an active character", () => {
+  it("keeps character presentation from changing the selected skill", () => {
     const advice = createPromptDraftAdvice({
       prompt: "fix the failing checkout test, it crashes in CI",
       characterId: "green-phosphor-pixel",
@@ -62,17 +56,13 @@ describe("Prompt advisor", () => {
 
     expect(advice).toEqual(
       expect.objectContaining({
-        title: "Prompt 草稿可補重現線索",
-        action: "補上錯誤訊息、重現步驟或測試指令。",
-        reason: "草稿看起來是在修 bug，但還缺少可重現的線索。",
-        skill: "diagnose",
-        priority: "medium",
-        presentation: {
+        skillHint: expect.objectContaining({
+          skill: "diagnose",
+          confidence: "high",
+          source: "prompt-draft",
+          scenario: "bug",
           characterId: "green-phosphor-pixel",
-          title: "跑指令：Prompt 草稿可補重現線索",
-          action: "命令列節奏：補上錯誤訊息、重現步驟或測試指令。",
-          bubble: "跑指令：補上錯誤訊息、重現步驟或測試指令。",
-        },
+        }),
       })
     );
   });

@@ -39,6 +39,8 @@ describe("Animation model", () => {
     const poses = Object.fromEntries(
       [
         "idle",
+        "typing",
+        "stuck",
         "thinking",
         "reading",
         "coding",
@@ -52,6 +54,8 @@ describe("Animation model", () => {
 
     expect(poses).toEqual({
       idle: "float",
+      typing: "note-hold",
+      stuck: "look-around",
       thinking: "spark-think",
       reading: "inspect",
       coding: "work-buddy",

@@ -4,6 +4,8 @@ import { createWorkContextTracker } from "./work-context.js";
 
 export const COMPANION_LIGHT_TONES = {
   idle: "idle",
+  typing: "running",
+  stuck: "waiting",
   thinking: "running",
   reading: "running",
   coding: "running",

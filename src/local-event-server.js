@@ -8,6 +8,8 @@ import { createSessionSummary } from "./session-summary.js";
 import { recommendSkillForTask } from "./skill-recommender.js";
 
 const SAFE_ZONES = ["right-edge", "top-right", "bottom-right", "retreat"];
+const DEFAULT_HINT_COOLDOWN_MS = 8 * 60 * 1000;
+const HANDOFF_WINDOW_MS = 10 * 60 * 1000;
 
 export function createLocalEventServer({
   classifyEvent = null,
@@ -19,10 +21,26 @@ export function createLocalEventServer({
   getPlacementDiagnostic = null,
   getReadinessDiagnostic = null,
   loadInstalledSkills = null,
+  getNow = () => Date.now(),
+  hintCooldownMs = DEFAULT_HINT_COOLDOWN_MS,
 } = {}) {
   const events = [];
+  const metrics = {
+    hintsShown: 0,
+    helpful: 0,
+    snoozed: 0,
+    dismissed: 0,
+    providerFocusChanges: 0,
+    promptTypingEvents: 0,
+  };
+  const snoozedHints = new Set();
+  const recentShownHints = new Map();
+  const failedTestTimes = [];
+  const shownHandoffs = new Set();
   let nextId = 1;
   let server;
+  let activeProvider = "";
+  let lastMeaningfulSignal = null;
 
   const requestListener = async (request, response) => {
     setCorsHeaders(response);
@@ -56,6 +74,11 @@ export function createLocalEventServer({
       sendJson(response, 200, {
         settings: getOverlaySettings ? await getOverlaySettings() : null,
       });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/companion/metrics") {
+      sendJson(response, 200, { metrics: { ...metrics } });
       return;
     }
 
@@ -116,23 +139,44 @@ export function createLocalEventServer({
     if (request.method === "POST" && url.pathname === "/events") {
       const event = await readJson(request);
       if (event?.type === "prompt:draft") {
-        const item = await appendPromptDraftDecision(event);
-        if (!item) {
+        const result = await appendPromptDraftDecision(event);
+        if (!result.item) {
           sendJson(response, 202, {
             accepted: false,
-            reason: "draft_not_actionable",
+            reason: result.reason,
           });
           return;
         }
 
-        sendJson(response, 202, { accepted: true, id: item.id });
+        sendJson(response, 202, { accepted: true, id: result.item.id });
         return;
       }
 
-      const item = appendEvent(event);
+      const storedEvent = sanitizeEventForStorage(event);
+      const item = appendEvent(storedEvent);
+      observeStoredEvent(storedEvent);
       sendJson(response, 202, { accepted: true, id: item.id });
 
-      if (classifyEvent && event.type !== "ai:decision") {
+      if (storedEvent.type === "agent:focus") {
+        const handoffDecision = createHandoffDecision(storedEvent);
+        if (handoffDecision) {
+          appendDecisionEvent(handoffDecision);
+        }
+        return;
+      }
+
+      if (
+        classifyEvent &&
+        ![
+          "ai:decision",
+          "agent:focus",
+          "prompt:typing",
+          "companion:hint_shown",
+          "companion:hint_helpful",
+          "companion:hint_snoozed",
+          "companion:hint_dismissed",
+        ].includes(String(event.type ?? ""))
+      ) {
         void classifyAndAppendDecision({
           sourceEvent: event,
           sourceEventId: item.id,
@@ -184,6 +228,7 @@ export function createLocalEventServer({
 
     if (request.method === "DELETE" && url.pathname === "/events") {
       events.length = 0;
+      resetTransientState();
       sendJson(response, 200, { cleared: true });
       return;
     }
@@ -251,7 +296,7 @@ export function createLocalEventServer({
       skillHint,
     });
 
-    appendEvent({
+    appendDecisionEvent({
       type: "ai:decision",
       sourceEventId,
       skillHint,
@@ -271,9 +316,45 @@ export function createLocalEventServer({
     return item;
   }
 
+  function appendDecisionEvent(event) {
+    const item = appendEvent(event);
+    observeStoredEvent(event);
+    recordHintShown(event.skillHint);
+    return item;
+  }
+
+  function resetTransientState() {
+    metrics.hintsShown = 0;
+    metrics.helpful = 0;
+    metrics.snoozed = 0;
+    metrics.dismissed = 0;
+    metrics.providerFocusChanges = 0;
+    metrics.promptTypingEvents = 0;
+    snoozedHints.clear();
+    recentShownHints.clear();
+    failedTestTimes.length = 0;
+    shownHandoffs.clear();
+    activeProvider = "";
+    lastMeaningfulSignal = null;
+  }
+
   async function appendPromptDraftDecision(event) {
     const decisionEvent = await createPromptDraftDecisionEvent(event);
-    return decisionEvent ? appendEvent(decisionEvent) : null;
+    if (!decisionEvent) {
+      if (isSettledDraftLongEnough(event.prompt)) {
+        appendEvent({
+          type: "prompt:stuck",
+          source: "prompt-draft",
+          ...(event.provider ? { provider: normalizeProvider(event.provider) } : {}),
+        });
+      }
+      return { item: null, reason: "draft_not_actionable" };
+    }
+    if (!isHintAllowed(decisionEvent.skillHint)) {
+      return { item: null, reason: "hint_suppressed" };
+    }
+
+    return { item: appendDecisionEvent(decisionEvent), reason: "" };
   }
 
   async function createPromptDraftDecisionEvent(event = {}) {
@@ -283,23 +364,174 @@ export function createLocalEventServer({
       skills,
       characterId: event.characterId,
     });
-    if (!advice) return null;
+    const workOverride = createWorkEventSkillHintOverride();
+    if (!advice && !workOverride) return null;
 
-    const { skillHint, ...promptAdvice } = advice;
+    const skillHint = workOverride ?? advice.skillHint;
     return {
       type: "ai:decision",
       source: "prompt:draft",
       state: "thinking",
       intensity: "medium",
       motion: "point",
-      line: advice.title,
-      ...(advice.presentation?.characterId
-        ? { characterId: advice.presentation.characterId }
+      line: skillHint.bubble,
+      ...(skillHint.characterId
+        ? { characterId: skillHint.characterId }
         : {}),
-      ...(skillHint ? { skillHint } : {}),
-      nextStepAdvice: promptAdvice,
-      promptAdvice,
+      skillHint,
     };
+  }
+
+  function observeStoredEvent(event = {}) {
+    const now = getNow();
+    pruneRecentTracking(now);
+
+    if (event.type === "prompt:typing") {
+      metrics.promptTypingEvents += 1;
+      return;
+    }
+
+    if (event.type === "agent:focus") {
+      metrics.providerFocusChanges += 1;
+      return;
+    }
+
+    if (isFeedbackEvent(event)) {
+      recordFeedbackEvent(event);
+      return;
+    }
+
+    if (event.type === "tool:finish" && event.tool === "test" && event.status === "failed") {
+      failedTestTimes.push(now);
+      if (failedTestTimes.length >= 2) {
+        recordMeaningfulSignal({
+          provider: activeProvider,
+          state: "error",
+          skillHint: createWorkEventSkillHintOverride(),
+        });
+      }
+      return;
+    }
+
+    if (
+      event.type === "ai:decision" &&
+      event.source !== "handoff" &&
+      event.skillHint?.confidence === "high"
+    ) {
+      recordMeaningfulSignal({
+        provider: event.provider ?? activeProvider,
+        state: event.state,
+        skillHint: event.skillHint,
+      });
+    }
+  }
+
+  function recordFeedbackEvent(event = {}) {
+    if (event.type === "companion:hint_shown") metrics.hintsShown += 1;
+    if (event.type === "companion:hint_helpful") metrics.helpful += 1;
+    if (event.type === "companion:hint_dismissed") metrics.dismissed += 1;
+    if (event.type === "companion:hint_snoozed") {
+      metrics.snoozed += 1;
+      const skill = String(event.skill ?? "").trim();
+      const scenario = String(event.scenario ?? "").trim();
+      if (skill) snoozedHints.add(`skill:${skill}`);
+      if (scenario) snoozedHints.add(`scenario:${scenario}`);
+    }
+  }
+
+  function recordHintShown(skillHint = {}) {
+    if (!skillHint?.skill || skillHint.confidence !== "high") return;
+    metrics.hintsShown += 1;
+    recentShownHints.set(hintCooldownKey(skillHint), getNow());
+  }
+
+  function recordMeaningfulSignal({ provider, state, skillHint }) {
+    if (!skillHint?.skill || skillHint.confidence !== "high") return;
+    lastMeaningfulSignal = {
+      provider: String(provider ?? "").trim(),
+      state: String(state ?? "unknown"),
+      skillHint,
+      at: getNow(),
+    };
+  }
+
+  function createHandoffDecision(event = {}) {
+    const provider = String(event.provider ?? "").trim();
+    if (!provider) return null;
+
+    const previousProvider = activeProvider;
+    if (!previousProvider) {
+      activeProvider = provider;
+      return null;
+    }
+
+    activeProvider = provider;
+    if (provider === previousProvider) return null;
+    if (!lastMeaningfulSignal || lastMeaningfulSignal.provider !== previousProvider) {
+      return null;
+    }
+    if (getNow() - lastMeaningfulSignal.at > HANDOFF_WINDOW_MS) {
+      return null;
+    }
+
+    const skillHint = lastMeaningfulSignal.skillHint;
+    const scenario = String(skillHint.scenario ?? scenarioForSkill(skillHint.skill));
+    const handoffKey = `${previousProvider}->${provider}:${skillHint.skill}:${scenario}`;
+    if (shownHandoffs.has(handoffKey)) return null;
+    shownHandoffs.add(handoffKey);
+
+    const fromLabel = providerLabel(previousProvider);
+    const category = categoryLabelForScenario(scenario);
+    const bubble = `剛才在 ${fromLabel} 做 ${category}。${baseBubbleForSkill(skillHint.skill)}`;
+
+    return {
+      type: "ai:decision",
+      source: "handoff",
+      state: "thinking",
+      intensity: "medium",
+      motion: "point",
+      line: bubble,
+      skillHint: {
+        skill: String(skillHint.skill),
+        confidence: "high",
+        reason: `剛才在 ${fromLabel} 有明確 ${category} 工作脈絡。`,
+        source: "handoff",
+        scenario,
+        bubble,
+      },
+    };
+  }
+
+  function createWorkEventSkillHintOverride() {
+    pruneRecentTracking(getNow());
+    if (failedTestTimes.length < 2) return null;
+
+    return {
+      skill: "diagnose",
+      confidence: "high",
+      reason: "最近測試連續失敗，工作事件優先於草稿內容。",
+      source: "work-event",
+      scenario: "bug",
+      bubble: "先縮小錯誤範圍。可用 diagnose。",
+    };
+  }
+
+  function isHintAllowed(skillHint = {}) {
+    if (!skillHint?.skill || skillHint.confidence !== "high") return false;
+    const skill = String(skillHint.skill);
+    const scenario = String(skillHint.scenario ?? scenarioForSkill(skill));
+    if (snoozedHints.has(`skill:${skill}`) || snoozedHints.has(`scenario:${scenario}`)) {
+      return false;
+    }
+
+    const lastShownAt = recentShownHints.get(hintCooldownKey(skillHint));
+    return !lastShownAt || getNow() - lastShownAt >= hintCooldownMs;
+  }
+
+  function pruneRecentTracking(now) {
+    while (failedTestTimes.length && now - failedTestTimes[0] > HANDOFF_WINDOW_MS) {
+      failedTestTimes.shift();
+    }
   }
 
   async function createVisionDecisionEvent(context) {
@@ -359,6 +591,125 @@ function createPlacementSettingsOverride(url) {
 function normalizeSafeZone(safeZone) {
   const value = String(safeZone ?? "").trim();
   return SAFE_ZONES.includes(value) ? value : "";
+}
+
+function sanitizeEventForStorage(event = {}) {
+  if (event?.type === "prompt:typing") {
+    return {
+      type: "prompt:typing",
+      ...(event.source ? { source: String(event.source) } : {}),
+      ...(event.provider ? { provider: String(event.provider) } : {}),
+      ...(event.appName ? { appName: String(event.appName) } : {}),
+      ...(event.windowTitle ? { windowTitle: String(event.windowTitle) } : {}),
+      ...(event.timestamp ? { timestamp: event.timestamp } : {}),
+    };
+  }
+
+  if (event?.type === "agent:focus") {
+    return {
+      type: "agent:focus",
+      provider: normalizeProvider(event.provider),
+      ...(event.appName ? { appName: String(event.appName) } : {}),
+      ...(event.windowTitle ? { windowTitle: String(event.windowTitle) } : {}),
+      ...(event.timestamp ? { timestamp: event.timestamp } : {}),
+    };
+  }
+
+  if (isFeedbackEvent(event)) {
+    return {
+      type: String(event.type),
+      ...(event.skill ? { skill: String(event.skill) } : {}),
+      ...(event.source ? { source: String(event.source) } : {}),
+      ...(event.confidence ? { confidence: String(event.confidence) } : {}),
+      ...(event.scenario ? { scenario: String(event.scenario) } : {}),
+      ...(event.timestamp ? { timestamp: event.timestamp } : {}),
+    };
+  }
+
+  return event;
+}
+
+function isFeedbackEvent(event = {}) {
+  return [
+    "companion:hint_shown",
+    "companion:hint_helpful",
+    "companion:hint_snoozed",
+    "companion:hint_dismissed",
+  ].includes(String(event.type ?? ""));
+}
+
+function normalizeProvider(provider) {
+  const value = String(provider ?? "").trim().toLowerCase();
+  if (value === "claude" || value === "claude-code") return "claude-code";
+  if (value === "codex") return "codex";
+  return value;
+}
+
+function isSettledDraftLongEnough(prompt) {
+  return String(prompt ?? "").replace(/\s+/g, " ").trim().length >= 18;
+}
+
+function hintCooldownKey(skillHint = {}) {
+  return [
+    String(skillHint.source ?? "unknown"),
+    String(skillHint.skill ?? ""),
+    String(skillHint.scenario ?? scenarioForSkill(skillHint.skill)),
+  ].join(":");
+}
+
+function scenarioForSkill(skill) {
+  const scenarios = {
+    diagnose: "bug",
+    "frontend-design": "ui",
+    tdd: "test",
+    prototype: "prototype",
+    "write-a-prd": "planning",
+    "openai-docs": "docs",
+  };
+
+  return scenarios[String(skill ?? "")] ?? "unknown";
+}
+
+function providerLabel(provider) {
+  const labels = {
+    codex: "Codex",
+    "claude-code": "Claude",
+  };
+
+  return labels[String(provider ?? "")] ?? String(provider ?? "agent");
+}
+
+function categoryLabelForScenario(scenario) {
+  const labels = {
+    ui: "UI",
+    bug: "bug",
+    test: "test",
+    planning: "planning",
+    prototype: "prototype",
+    docs: "docs",
+    implementation: "implementation",
+  };
+
+  return labels[String(scenario ?? "")] ?? "工作";
+}
+
+function baseBubbleForSkill(skill) {
+  const bubbles = {
+    diagnose: "先縮小錯誤範圍。可用 diagnose。",
+    "frontend-design": "先檢查畫面狀態。可用 frontend-design。",
+    tdd: "先切一個小測試。可用 tdd。",
+    prototype: "先做可玩原型。可用 prototype。",
+    "write-a-prd": "先整理需求範圍。可用 write-a-prd。",
+    "openai-docs": "先查官方文件。可用 openai-docs。",
+  };
+
+  const value = String(skill ?? "").trim();
+  return bubbles[value] ?? `先切到合適流程。可用 ${truncateSkillName(value)}。`;
+}
+
+function truncateSkillName(skill) {
+  const value = String(skill ?? "").trim();
+  return value.length > 28 ? `${value.slice(0, 27)}…` : value;
 }
 
 function intensityForConfidence(confidence) {

@@ -1,5 +1,7 @@
 export const AGENT_STATES = [
   "idle",
+  "typing",
+  "stuck",
   "thinking",
   "reading",
   "coding",

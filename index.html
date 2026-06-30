@@ -3,16 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vibe Coding Companion</title>
-    <link rel="stylesheet" href="/src/styles.css" />
+    <title>Vibe Companion Dashboard</title>
+    <link rel="stylesheet" href="/src/setup-key.css" />
   </head>
   <body>
-    <main id="app"></main>
+    <main id="setup"></main>
     <script type="module">
-      import { mountApp } from "/src/app.js";
+      import { mountSetupKeyPage } from "/src/setup-key.js";
 
-      mountApp(document.querySelector("#app"), {
-        eventUrl: import.meta.env.VITE_COMPANION_EVENT_URL,
+      const eventUrl = import.meta.env.VITE_COMPANION_EVENT_URL;
+      const eventBaseUrl = eventUrl?.replace(/\/events$/, "");
+
+      mountSetupKeyPage(document.querySelector("#setup"), {
+        endpoint: eventBaseUrl ? `${eventBaseUrl}/settings/google-ai-key` : undefined,
+        statusEndpoint: eventBaseUrl ? `${eventBaseUrl}/settings/status` : undefined,
+        eventsEndpoint: eventUrl,
+        sessionSummaryEndpoint: eventBaseUrl ? `${eventBaseUrl}/session/summary` : undefined,
+        overlaySettingsEndpoint: eventBaseUrl ? `${eventBaseUrl}/settings/overlay` : undefined,
+        visionEndpoint: eventBaseUrl ? `${eventBaseUrl}/vision/context` : undefined,
+        placementDiagnosticEndpoint: eventBaseUrl
+          ? `${eventBaseUrl}/placement/diagnostic`
+          : undefined,
       });
     </script>
   </body>

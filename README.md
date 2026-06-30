@@ -10,7 +10,9 @@ npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173/`.
+Open `http://127.0.0.1:5173/` for the Companion Dashboard.
+The older web prototype playground is still available at
+`http://127.0.0.1:5173/demo.html`.
 
 To run the companion with the local event endpoint:
 

@@ -142,6 +142,44 @@ describe("Local event server", () => {
     });
   });
 
+  it("clears transient hint suppression state while keeping event ids monotonic", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    const draft = {
+      type: "prompt:draft",
+      source: "console",
+      prompt: "fix the failing checkout test and find the smallest repro",
+    };
+
+    const first = await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(draft),
+    });
+    expect(await first.json()).toEqual({ accepted: true, id: 1 });
+
+    const suppressed = await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(draft),
+    });
+    expect(await suppressed.json()).toEqual({
+      accepted: false,
+      reason: "hint_suppressed",
+    });
+
+    await fetch(`${server.url()}/events`, { method: "DELETE" });
+
+    const second = await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(draft),
+    });
+    expect(await second.json()).toEqual({ accepted: true, id: 2 });
+  });
+
   it("summarizes captured session events through a local-only endpoint", async () => {
     const server = createLocalEventServer();
     servers.push(server);
@@ -334,33 +372,94 @@ describe("Local event server", () => {
           state: "thinking",
           intensity: "medium",
           motion: "point",
-          line: "Prompt 草稿可補重現線索",
+          line: "先縮小錯誤範圍。可用 diagnose。",
           skillHint: {
             skill: "diagnose",
             confidence: "high",
             reason: "適合重現、定位並修復 bug 或測試失敗。",
-          },
-          nextStepAdvice: {
-            title: "Prompt 草稿可補重現線索",
-            action: "補上錯誤訊息、重現步驟或測試指令。",
-            reason: "草稿看起來是在修 bug，但還缺少可重現的線索。",
-            skill: "diagnose",
-            priority: "medium",
-            speakable: true,
-          },
-          promptAdvice: {
-            title: "Prompt 草稿可補重現線索",
-            action: "補上錯誤訊息、重現步驟或測試指令。",
-            reason: "草稿看起來是在修 bug，但還缺少可重現的線索。",
-            skill: "diagnose",
-            priority: "medium",
-            speakable: true,
+            source: "prompt-draft",
+            scenario: "bug",
+            bubble: "先縮小錯誤範圍。可用 diagnose。",
           },
         },
       },
     ]);
     expect(JSON.stringify(payload.events)).not.toContain("checkout test");
     expect(classifyEvent).not.toHaveBeenCalled();
+  });
+
+  it("stores prompt typing as content-free animation metadata", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "prompt:typing",
+        source: "accessibility",
+        provider: "codex",
+        appName: "Codex",
+        windowTitle: "Codex",
+        prompt: "fix the secret checkout prompt",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ accepted: true, id: 1 });
+
+    const eventsResponse = await fetch(`${server.url()}/events?since=0`);
+    const payload = await eventsResponse.json();
+
+    expect(payload.events).toEqual([
+      {
+        id: 1,
+        event: {
+          type: "prompt:typing",
+          source: "accessibility",
+          provider: "codex",
+          appName: "Codex",
+          windowTitle: "Codex",
+        },
+      },
+    ]);
+    expect(JSON.stringify(payload.events)).not.toContain("checkout");
+  });
+
+  it("stays quiet for prompt drafts that do not produce a high-confidence skill", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "prompt:draft",
+        source: "console",
+        prompt: "improve this feature and make the code better",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({
+      accepted: false,
+      reason: "draft_not_actionable",
+    });
+
+    const eventsResponse = await fetch(`${server.url()}/events?since=0`);
+    expect(await eventsResponse.json()).toEqual({
+      events: [
+        {
+          id: 1,
+          event: {
+            type: "prompt:stuck",
+            source: "prompt-draft",
+          },
+        },
+      ],
+    });
   });
 
   it("characterizes prompt draft advice when the dashboard includes an active character", async () => {
@@ -389,18 +488,15 @@ describe("Local event server", () => {
           type: "ai:decision",
           source: "prompt:draft",
           characterId: "foam-ghost",
-          nextStepAdvice: expect.objectContaining({
-            title: "Prompt 草稿可補重現線索",
-            action: "補上錯誤訊息、重現步驟或測試指令。",
-            reason: "草稿看起來是在修 bug，但還缺少可重現的線索。",
-            priority: "medium",
+          skillHint: expect.objectContaining({
             skill: "diagnose",
+            confidence: "high",
+            source: "prompt-draft",
+            scenario: "bug",
+            characterId: "foam-ghost",
             presentation: {
               characterId: "foam-ghost",
-              title: "慢慢來：Prompt 草稿可補重現線索",
-              action:
-                "先不用急，補上錯誤訊息、重現步驟或測試指令。 也可以先用 Dashboard textarea。",
-              bubble: "慢慢來：補上錯誤訊息、重現步驟或測試指令。",
+              bubble: "先縮小錯誤範圍。可用 diagnose。",
             },
           }),
         }),
@@ -440,6 +536,9 @@ describe("Local event server", () => {
       confidence: "high",
       reason:
         "Disciplined diagnosis loop for hard bugs, regressions, and failing tests.",
+      source: "prompt-draft",
+      scenario: "bug",
+      bubble: "先縮小錯誤範圍。可用 diagnose。",
     });
     expect(loadInstalledSkills).toHaveBeenCalledOnce();
   });
@@ -467,6 +566,253 @@ describe("Local event server", () => {
 
     const eventsResponse = await fetch(`${server.url()}/events?since=0`);
     expect(await eventsResponse.json()).toEqual({ events: [] });
+  });
+
+  it("records local hint feedback metrics without storing prompt content", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "companion:hint_shown",
+        skill: "diagnose",
+        source: "prompt-draft",
+        confidence: "high",
+        scenario: "bug",
+        prompt: "private checkout prompt",
+      }),
+    });
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "companion:hint_helpful",
+        skill: "diagnose",
+        source: "prompt-draft",
+        confidence: "high",
+        scenario: "bug",
+        prompt: "private checkout prompt",
+      }),
+    });
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "companion:hint_dismissed",
+        skill: "diagnose",
+        source: "prompt-draft",
+        confidence: "high",
+        scenario: "bug",
+      }),
+    });
+
+    const metricsResponse = await fetch(`${server.url()}/companion/metrics`);
+    expect(await metricsResponse.json()).toEqual({
+      metrics: {
+        hintsShown: 1,
+        helpful: 1,
+        snoozed: 0,
+        dismissed: 1,
+        providerFocusChanges: 0,
+        promptTypingEvents: 0,
+      },
+    });
+
+    const eventsResponse = await fetch(`${server.url()}/events?since=0`);
+    const payload = await eventsResponse.json();
+    expect(JSON.stringify(payload.events)).not.toContain("checkout");
+    expect(payload.events.map((item) => item.event)).toEqual([
+      {
+        type: "companion:hint_shown",
+        skill: "diagnose",
+        source: "prompt-draft",
+        confidence: "high",
+        scenario: "bug",
+      },
+      {
+        type: "companion:hint_helpful",
+        skill: "diagnose",
+        source: "prompt-draft",
+        confidence: "high",
+        scenario: "bug",
+      },
+      {
+        type: "companion:hint_dismissed",
+        skill: "diagnose",
+        source: "prompt-draft",
+        confidence: "high",
+        scenario: "bug",
+      },
+    ]);
+  });
+
+  it("snoozes future hints for the same skill and scenario", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "companion:hint_snoozed",
+        skill: "diagnose",
+        source: "prompt-draft",
+        confidence: "high",
+        scenario: "bug",
+      }),
+    });
+
+    const response = await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "prompt:draft",
+        source: "console",
+        prompt: "fix the failing checkout test and find the smallest repro",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({
+      accepted: false,
+      reason: "hint_suppressed",
+    });
+
+    const metricsResponse = await fetch(`${server.url()}/companion/metrics`);
+    expect(await metricsResponse.json()).toEqual({
+      metrics: {
+        hintsShown: 0,
+        helpful: 0,
+        snoozed: 1,
+        dismissed: 0,
+        providerFocusChanges: 0,
+        promptTypingEvents: 0,
+      },
+    });
+  });
+
+  it("uses recent high-friction work context before prompt draft recommendations", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    for (const event of [
+      { type: "tool:finish", tool: "test", status: "failed" },
+      { type: "tool:finish", tool: "test", status: "failed" },
+    ]) {
+      await fetch(`${server.url()}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(event),
+      });
+    }
+
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "prompt:draft",
+        source: "console",
+        prompt: "調整 overlay UI layout，讓提示泡泡更像助手",
+      }),
+    });
+
+    const eventsResponse = await fetch(`${server.url()}/events?since=0`);
+    const payload = await eventsResponse.json();
+    const decision = payload.events.find(
+      (item) => item.event.source === "prompt:draft"
+    )?.event;
+
+    expect(decision.skillHint).toEqual({
+      skill: "diagnose",
+      confidence: "high",
+      reason: "最近測試連續失敗，工作事件優先於草稿內容。",
+      source: "work-event",
+      scenario: "bug",
+      bubble: "先縮小錯誤範圍。可用 diagnose。",
+    });
+  });
+
+  it("creates one handoff hint when focus moves between agent providers", async () => {
+    let now = 1000;
+    const server = createLocalEventServer({ getNow: () => now });
+    servers.push(server);
+    await server.listen(0);
+
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "agent:focus",
+        provider: "codex",
+        appName: "Codex",
+        windowTitle: "Codex",
+        prompt: "private prompt",
+      }),
+    });
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "prompt:draft",
+        source: "console",
+        provider: "codex",
+        prompt: "調整 overlay UI layout，讓提示泡泡更像助手",
+      }),
+    });
+
+    now = 1200;
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "agent:focus",
+        provider: "claude-code",
+        appName: "Claude",
+        windowTitle: "Claude Code",
+        conversation: "private conversation",
+      }),
+    });
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "agent:focus",
+        provider: "codex",
+        appName: "Codex",
+        windowTitle: "Codex",
+      }),
+    });
+
+    const eventsResponse = await fetch(`${server.url()}/events?since=0`);
+    const payload = await eventsResponse.json();
+    const handoffDecisions = payload.events
+      .map((item) => item.event)
+      .filter((event) => event.type === "ai:decision" && event.source === "handoff");
+
+    expect(handoffDecisions).toEqual([
+      {
+        type: "ai:decision",
+        source: "handoff",
+        state: "thinking",
+        intensity: "medium",
+        motion: "point",
+        line: "剛才在 Codex 做 UI。先檢查畫面狀態。可用 frontend-design。",
+        skillHint: {
+          skill: "frontend-design",
+          confidence: "high",
+          reason: "剛才在 Codex 有明確 UI 工作脈絡。",
+          source: "handoff",
+          scenario: "ui",
+          bubble: "剛才在 Codex 做 UI。先檢查畫面狀態。可用 frontend-design。",
+        },
+      },
+    ]);
+    expect(JSON.stringify(payload.events)).not.toContain("private");
   });
 
   it("saves a Google AI Studio key through a local-only settings endpoint without echoing it", async () => {
