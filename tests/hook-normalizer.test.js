@@ -159,7 +159,7 @@ describe("Hook normalizer", () => {
         tool_name: "Bash",
         tool_input: { command: "npm test" },
         tool_response: `
-          RUN  v2.1.9 /Users/cengweiting/Documents/New project 2
+          RUN  v2.1.9 /Users/developer/projects/vibe-coding-companion
 
           ✓ tests/hook-normalizer.test.js (16 tests) 3ms
           ✓ tests/overlay-window.test.js (9 tests) 8ms

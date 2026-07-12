@@ -12,7 +12,9 @@ describe("Overlay main runtime", () => {
       setIgnoreMouseEvents: vi.fn(),
       loadURL: vi.fn(),
     };
-    const BrowserWindow = vi.fn(() => overlayWindow);
+    const BrowserWindow = vi.fn(function BrowserWindowMock() {
+      return overlayWindow;
+    });
     const controller = { start: vi.fn() };
     const stateTracker = {
       start: vi.fn(),

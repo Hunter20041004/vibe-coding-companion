@@ -1,7 +1,43 @@
-# Vibe Coding Companion Prototype
+# Vibe Coding Companion
 
-Web app prototype for a pixel-blob coding companion that reacts to a simulated
-bug-fix agent flow.
+一個以隱私優先為原則的本機 coding companion：它把 Codex／Claude Code 的事件轉成低干擾的像素精靈狀態，只在訊號足夠明確時提示下一步或適合的 Skill。
+
+![Vibe Coding Companion Dashboard](docs/screenshots/dashboard.png)
+
+## 作品集重點
+
+- **跨介面產品切片**：Web Console、local event server、macOS foreground probe 與 Electron overlay。
+- **低干擾互動模型**：reading、coding、testing、error、success 等狀態映射到邊緣動態，不遮住主要工作區。
+- **本機優先**：prompt advice 採 deterministic rules；AI 與 Vision 都是選用且需使用者主動設定或觸發。
+- **隱私工程**：不把 API key 寫進 repository，不保存原始 prompt，不持續截圖。
+- **測試保護**：unit、integration、desktop placement 與 Playwright E2E 覆蓋核心工作流程。
+
+## 架構摘要
+
+```text
+src/agent-* / event-*     agent 事件正規化與本機事件流
+src/companion-*           工作摘要、brain、建議與角色行為
+src/overlay-*             Electron 視窗、狀態與避讓定位
+src/prompt-* / vision-*   本機 prompt advisor 與 opt-in Vision
+scripts/                  launcher、event server、hook 與 prompt watcher
+tests/ + e2e/             行為測試與瀏覽器流程
+```
+
+## 快速 Demo
+
+```bash
+npm ci
+npm run dev
+```
+
+開啟 `http://127.0.0.1:5173/`，在 Skill hint simulator 輸入一個具體除錯需求，觀察 companion 只在信心足夠時提出一個建議。完整本機事件橋接使用 `npm run dev:all`；桌面 overlay 再另開 `npm run overlay`。
+
+## 安全與隱私
+
+- Google AI Studio key 僅寫入使用者家目錄的 `~/.vibe-coding-companion.env`，權限為 `0600`。
+- Prompt watcher 只在指定 coding app 位於前景時讀取目前輸入，事件流不保存原始 prompt。
+- Vision context 只在使用者按下按鈕後擷取一次；無效圖片不持久化，也不會背景連續監看。
+- 本機 log、測試輸出、環境檔與 runtime artifacts 均由 `.gitignore` 排除。
 
 ## Run
 

@@ -22,6 +22,12 @@ export default {
       timeout: 120000,
       env: {
         EVENT_PORT: "5184",
+        AI_PROVIDER: "",
+        AI_API_KEY: "",
+        AI_MODEL: "",
+        GEMINI_API_KEY: "",
+        GOOGLE_API_KEY: "",
+        OPENAI_API_KEY: "",
       },
     },
   ],
