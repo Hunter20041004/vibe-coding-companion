@@ -29,9 +29,27 @@ describe("portfolio presentation", () => {
     expect(readme).toContain("### 本機服務的安全邊界");
     expect(readme).toContain("Event server 只監聽 loopback");
     expect(readme).toContain("事件流不保存原始 prompt");
+    expect(readme).toMatch(
+      /Google AI Studio key[\s\S]{0,160}\.vibe-coding-companion\.env[\s\S]{0,80}0600/,
+    );
+    expect(readme).toMatch(
+      /Vision context[\s\S]{0,120}按下按鈕後擷取一次[\s\S]{0,120}不會背景連續監看/,
+    );
+    expect(readme).toMatch(
+      /HTTP 請求[\s\S]{0,80}驗證 `Host`[\s\S]{0,160}127\.0\.0\.1[\s\S]{0,80}localhost[\s\S]{0,80}::1/,
+    );
+    expect(readme).toMatch(
+      /CORS[\s\S]{0,100}精確來源[\s\S]{0,80}不使用萬用字元/,
+    );
+    expect(readme).toMatch(
+      /API key 與原始 prompt[\s\S]{0,100}event log[\s\S]{0,120}只回傳是否已設定[\s\S]{0,80}不回傳 key/,
+    );
 
     expect(license).toContain("MIT License");
     expect(license).toContain("Permission is hereby granted, free of charge");
+    expect(license).toMatch(
+      /copyright notice and this permission notice shall be included[\s\S]{0,100}copies or substantial portions of the Software/i,
+    );
     expect(license).toContain('THE SOFTWARE IS PROVIDED "AS IS"');
     expect(license).toMatch(
       /IN NO EVENT SHALL THE\s+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE/,
