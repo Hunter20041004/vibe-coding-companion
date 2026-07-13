@@ -1,8 +1,58 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { parse, stringify } from "yaml";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
+const CI_WORKFLOW = path.join(ROOT, ".github/workflows/ci.yml");
+const CI_COMMANDS = [
+  "npm ci",
+  "npm test",
+  "npm run build",
+  "npx playwright install --with-deps chromium",
+  "npm run test:e2e",
+  "npm audit --audit-level=high",
+];
+
+function assertCiWorkflowContract(source) {
+  const workflow = parse(source);
+
+  expect(workflow.name).toBe("CI");
+  expect(workflow.on).toEqual({ push: null, pull_request: null });
+  expect(workflow.permissions).toEqual({ contents: "read" });
+  expect(workflow.concurrency).toMatchObject({
+    "cancel-in-progress": true,
+  });
+  expect(workflow.concurrency.group).toEqual(expect.any(String));
+
+  expect(Object.keys(workflow.jobs)).toEqual(["verify"]);
+  const job = workflow.jobs.verify;
+  expect(job["runs-on"]).toBe("ubuntu-latest");
+  expect(job["timeout-minutes"]).toBe(25);
+  expect(job.permissions).toBeUndefined();
+  expect(job.services).toBeUndefined();
+  expect(job.env).toBeUndefined();
+
+  const actionSteps = job.steps.filter((step) => step.uses);
+  expect(actionSteps).toEqual([
+    {
+      name: "Checkout",
+      uses: "actions/checkout@v4",
+      with: { "persist-credentials": false },
+    },
+    {
+      name: "Set up Node.js",
+      uses: "actions/setup-node@v4",
+      with: { "node-version": "22", cache: "npm" },
+    },
+  ]);
+  expect(job.steps.map((step) => step.run).filter(Boolean)).toEqual(CI_COMMANDS);
+  expect(job.steps).toHaveLength(actionSteps.length + CI_COMMANDS.length);
+
+  const serialized = JSON.stringify(workflow);
+  expect(serialized).not.toMatch(/\$\{\{\s*secrets\./i);
+  expect(serialized).not.toMatch(/(?:GOOGLE|GEMINI)[A-Z0-9_]*?(?:KEY|TOKEN|SECRET)/i);
+}
 
 describe("portfolio presentation", () => {
   it("declares a deterministic evidence command", () => {
@@ -10,6 +60,51 @@ describe("portfolio presentation", () => {
     expect(pkg.scripts["portfolio:capture"]).toBe(
       "playwright test e2e/portfolio-evidence.spec.js",
     );
+  });
+
+  it("keeps CI verification least-privilege and offline", () => {
+    const source = fs.readFileSync(CI_WORKFLOW, "utf8");
+    assertCiWorkflowContract(source);
+
+    const hostileVariants = [
+      (workflow) => {
+        workflow.permissions.contents = "write";
+      },
+      (workflow) => {
+        workflow.jobs.lint = { "runs-on": "ubuntu-latest", steps: [] };
+      },
+      (workflow) => {
+        workflow.jobs.verify["timeout-minutes"] = 26;
+      },
+      (workflow) => {
+        workflow.jobs.verify.steps.find((step) => step.uses?.includes("setup-node"))[
+          "with"
+        ]["node-version"] = "20";
+      },
+      (workflow) => {
+        workflow.jobs.verify.steps.find((step) => step.run === "npm test").run =
+          "npm test || true";
+      },
+      (workflow) => {
+        workflow.jobs.verify.env = {
+          GEMINI_API_KEY: "${{ secrets.GEMINI_API_KEY }}",
+        };
+      },
+      (workflow) => {
+        workflow.jobs.verify.services = {
+          provider: { image: "external/provider:latest" },
+        };
+      },
+      (workflow) => {
+        delete workflow.concurrency;
+      },
+    ];
+
+    for (const mutate of hostileVariants) {
+      const hostile = parse(source);
+      mutate(hostile);
+      expect(() => assertCiWorkflowContract(stringify(hostile))).toThrow();
+    }
   });
 
   it("stores real recommendation image and video evidence", () => {
