@@ -5,6 +5,8 @@ import { parse, stringify } from "yaml";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const CI_WORKFLOW = path.join(ROOT, ".github/workflows/ci.yml");
+const CHECKOUT_PIN = "34e114876b0b11c390a56381ad16ebd13914f8d5";
+const SETUP_NODE_PIN = "49933ea5288caeca8642d1e84afbd3f7d6820020";
 const CI_COMMANDS = [
   "npm ci",
   "npm test",
@@ -42,12 +44,12 @@ function assertCiWorkflowContract(source) {
   expect(actionSteps).toEqual([
     {
       name: "Checkout",
-      uses: "actions/checkout@v4",
+      uses: `actions/checkout@${CHECKOUT_PIN}`,
       with: { "persist-credentials": false },
     },
     {
       name: "Set up Node.js",
-      uses: "actions/setup-node@v4",
+      uses: `actions/setup-node@${SETUP_NODE_PIN}`,
       with: { "node-version": "22", cache: "npm" },
     },
   ]);
@@ -70,6 +72,8 @@ describe("portfolio presentation", () => {
   it("keeps CI verification least-privilege and offline", () => {
     const source = fs.readFileSync(CI_WORKFLOW, "utf8");
     assertCiWorkflowContract(source);
+    expect(source).toContain(`uses: actions/checkout@${CHECKOUT_PIN} # v4.3.1`);
+    expect(source).toContain(`uses: actions/setup-node@${SETUP_NODE_PIN} # v4.4.0`);
 
     const hostileVariants = [
       (workflow) => {
@@ -85,6 +89,16 @@ describe("portfolio presentation", () => {
         workflow.jobs.verify.steps.find((step) => step.uses?.includes("setup-node"))[
           "with"
         ]["node-version"] = "20";
+      },
+      (workflow) => {
+        workflow.jobs.verify.steps.find((step) => step.uses?.includes("checkout"))[
+          "uses"
+        ] = "actions/checkout@v4.3.1";
+      },
+      (workflow) => {
+        workflow.jobs.verify.steps.find((step) => step.uses?.includes("setup-node"))[
+          "uses"
+        ] = "actions/setup-node@09933ea5288caeca8642d1e84afbd3f7d6820020";
       },
       (workflow) => {
         workflow.jobs.verify.steps.find((step) => step.run === "npm test").run =
@@ -140,6 +154,18 @@ describe("portfolio presentation", () => {
     if (fs.existsSync(videoPath)) {
       expect(fs.statSync(videoPath).size).toBeGreaterThan(100 * 1024);
     }
+  });
+
+  it("links the synthetic local recommendation demo near the first screen", () => {
+    const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
+    const demoLink =
+      "[Watch the synthetic local recommendation demo](docs/demo/skill-recommendation.webm)";
+
+    expect(readme).toContain(demoLink);
+    expect(readme).toContain("synthetic local evidence");
+    expect(readme.indexOf(demoLink)).toBeLessThan(
+      readme.indexOf("![Vibe Coding Companion Dashboard]"),
+    );
   });
 
   it("explains human-in-the-loop recommendation gating", () => {

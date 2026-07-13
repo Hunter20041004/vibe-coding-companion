@@ -23,6 +23,7 @@ export default {
       env: {
         EVENT_PORT: "5184",
         ALLOWED_BROWSER_ORIGINS: "http://127.0.0.1:5183",
+        CODEX_HOME: "./fixtures/codex-home",
         AI_PROVIDER: "",
         AI_API_KEY: "",
         AI_MODEL: "",
