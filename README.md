@@ -2,6 +2,10 @@
 
 一個以隱私優先為原則的本機 coding companion：它把 Codex／Claude Code 的事件轉成低干擾的像素精靈狀態，只在訊號足夠明確時提示下一步或適合的 Skill。
 
+## Executive Summary
+
+Vibe Coding Companion observes local coding events and turns them into a quiet work-state companion. Its deterministic Skill recommendation maps observable signals, such as edits and test results, to one suggested next action. A recommendation is surfaced only when it clears the confidence threshold; otherwise the companion stays quiet. This is a Human-in-the-loop workflow: Vibe proposes, but the developer decides whether to act, and no Skill is executed or installed automatically.
+
 ![Vibe Coding Companion Dashboard](docs/screenshots/dashboard.png)
 
 ## 作品集重點
