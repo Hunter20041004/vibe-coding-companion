@@ -1,5 +1,7 @@
 # Vibe Coding Companion
 
+[![CI](https://github.com/Hunter20041004/vibe-coding-companion/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Hunter20041004/vibe-coding-companion/actions/workflows/ci.yml)
+
 一個以隱私優先為原則的本機 coding companion：它把 Codex／Claude Code 的事件轉成低干擾的像素精靈狀態，只在訊號足夠明確時提示下一步或適合的 Skill。
 
 ## Executive Summary
