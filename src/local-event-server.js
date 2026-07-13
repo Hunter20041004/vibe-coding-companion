@@ -10,6 +10,10 @@ import { recommendSkillForTask } from "./skill-recommender.js";
 const SAFE_ZONES = ["right-edge", "top-right", "bottom-right", "retreat"];
 const DEFAULT_HINT_COOLDOWN_MS = 8 * 60 * 1000;
 const HANDOFF_WINDOW_MS = 10 * 60 * 1000;
+const DEFAULT_ALLOWED_ORIGINS = new Set([
+  "http://127.0.0.1:5173",
+  "http://localhost:5173",
+]);
 
 export function createLocalEventServer({
   classifyEvent = null,
@@ -23,6 +27,7 @@ export function createLocalEventServer({
   loadInstalledSkills = null,
   getNow = () => Date.now(),
   hintCooldownMs = DEFAULT_HINT_COOLDOWN_MS,
+  allowedOrigins = DEFAULT_ALLOWED_ORIGINS,
 } = {}) {
   const events = [];
   const metrics = {
@@ -43,6 +48,12 @@ export function createLocalEventServer({
   let lastMeaningfulSignal = null;
 
   const requestListener = async (request, response) => {
+    const origin = request.headers.origin;
+    if (!isAllowedOrigin(origin, allowedOrigins)) {
+      sendJson(response, 403, { error: "origin_not_allowed" });
+      return;
+    }
+
     setCorsHeaders(response);
 
     if (request.method === "OPTIONS") {
@@ -740,6 +751,10 @@ function setCorsHeaders(response) {
   response.setHeader("access-control-allow-origin", "*");
   response.setHeader("access-control-allow-methods", "GET,POST,DELETE,OPTIONS");
   response.setHeader("access-control-allow-headers", "content-type");
+}
+
+function isAllowedOrigin(origin, allowedOrigins) {
+  return !origin || allowedOrigins.has(origin);
 }
 
 function sendJson(response, status, payload) {

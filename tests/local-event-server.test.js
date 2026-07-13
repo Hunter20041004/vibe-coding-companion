@@ -10,6 +10,26 @@ afterEach(async () => {
 });
 
 describe("Local event server", () => {
+  it("rejects disallowed browser origins", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    await fetch(`${server.url()}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "prompt:submitted" }),
+    });
+
+    const response = await fetch(`${server.url()}/events?since=0`, {
+      headers: { origin: "https://evil.example" },
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "origin_not_allowed" });
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
   it("accepts observable events over HTTP and returns events since a cursor", async () => {
     const server = createLocalEventServer();
     servers.push(server);
