@@ -122,12 +122,18 @@ describe("Local event server", () => {
 
     const response = await fetch(`${server.url()}/events`, {
       method: "OPTIONS",
+      headers: { origin: "http://127.0.0.1:5173" },
     });
 
     expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "http://127.0.0.1:5173"
+    );
+    expect(response.headers.get("vary")).toContain("Origin");
     expect(response.headers.get("access-control-allow-methods")).toContain(
       "DELETE"
     );
+    expect(response.headers.get("access-control-allow-origin")).not.toBe("*");
   });
 
   it("keeps event ids monotonic after clearing so active pollers do not miss new events", async () => {
@@ -857,6 +863,26 @@ describe("Local event server", () => {
       apiKey: "new-google-key",
       model: "gemma-4-31b-it",
     });
+  });
+
+  it("blocks disallowed origins before they can mutate the Google AI key", async () => {
+    const saveGoogleAiStudioKey = vi.fn(async () => {});
+    const server = createLocalEventServer({ saveGoogleAiStudioKey });
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await fetch(`${server.url()}/settings/google-ai-key`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://evil.example",
+      },
+      body: JSON.stringify({ apiKey: "stolen-key" }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "origin_not_allowed" });
+    expect(saveGoogleAiStudioKey).not.toHaveBeenCalled();
   });
 
   it("reports companion settings status without exposing the API key", async () => {

@@ -54,7 +54,7 @@ export function createLocalEventServer({
       return;
     }
 
-    setCorsHeaders(response);
+    setCorsHeaders(response, origin);
 
     if (request.method === "OPTIONS") {
       response.writeHead(204);
@@ -747,8 +747,11 @@ function motionForState(state) {
   return motions[state] ?? "observe";
 }
 
-function setCorsHeaders(response) {
-  response.setHeader("access-control-allow-origin", "*");
+function setCorsHeaders(response, origin) {
+  if (origin) {
+    response.setHeader("access-control-allow-origin", origin);
+    response.setHeader("vary", "Origin");
+  }
   response.setHeader("access-control-allow-methods", "GET,POST,DELETE,OPTIONS");
   response.setHeader("access-control-allow-headers", "content-type");
 }
