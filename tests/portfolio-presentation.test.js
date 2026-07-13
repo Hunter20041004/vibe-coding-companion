@@ -5,6 +5,30 @@ import path from "node:path";
 const ROOT = path.resolve(import.meta.dirname, "..");
 
 describe("portfolio presentation", () => {
+  it("declares a deterministic evidence command", () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+    expect(pkg.scripts["portfolio:capture"]).toBe(
+      "playwright test e2e/portfolio-evidence.spec.js",
+    );
+  });
+
+  it("stores real recommendation image and video evidence", () => {
+    const screenshot = fs.readFileSync(
+      path.join(ROOT, "docs/screenshots/dashboard.png"),
+    );
+    const videoPath = path.join(ROOT, "docs/demo/skill-recommendation.webm");
+
+    expect.soft([...screenshot.subarray(0, 8)]).toEqual([
+      137, 80, 78, 71, 13, 10, 26, 10,
+    ]);
+    expect.soft(screenshot.readUInt32BE(16)).toBe(1440);
+    expect.soft(screenshot.readUInt32BE(20)).toBe(900);
+    expect.soft(fs.existsSync(videoPath)).toBe(true);
+    if (fs.existsSync(videoPath)) {
+      expect(fs.statSync(videoPath).size).toBeGreaterThan(100 * 1024);
+    }
+  });
+
   it("explains human-in-the-loop recommendation gating", () => {
     const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
     expect(readme).toContain("Human-in-the-loop");

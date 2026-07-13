@@ -21,6 +21,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "portfolio:capture": "playwright test e2e/portfolio-evidence.spec.js",
     "verify": "npm test && npm run test:e2e"
   },
   "devDependencies": {
