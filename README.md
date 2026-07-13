@@ -4,7 +4,7 @@
 
 ## Executive Summary
 
-Vibe Coding Companion observes local coding events and turns them into a quiet work-state companion. Its deterministic Skill recommendation maps observable signals, such as edits and test results, to one suggested next action. A recommendation is surfaced only when it clears the confidence threshold; otherwise the companion stays quiet. This is a Human-in-the-loop workflow: Vibe proposes, but the developer decides whether to act, and no Skill is executed or installed automatically.
+Vibe Coding Companion observes local coding events and turns them into a quiet work-state companion. Its deterministic Skill recommendation maps observable signals, such as edits and test results, to one suggested next action. High-confidence recommendations may speak through the overlay, while lower-confidence recommendations remain visible in the Console without interrupting the coding surface. This is a Human-in-the-loop workflow: Vibe proposes, but the developer decides whether to act, and no Skill is executed or installed automatically.
 
 ![Vibe Coding Companion Dashboard](docs/screenshots/dashboard.png)
 
