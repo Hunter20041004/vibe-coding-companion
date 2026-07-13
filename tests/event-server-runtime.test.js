@@ -67,6 +67,32 @@ describe("Event server runtime", () => {
     );
   });
 
+  it("passes explicitly configured loopback browser origins to the server", () => {
+    const options = createEventServerOptions({
+      processEnv: {
+        ALLOWED_BROWSER_ORIGINS:
+          "http://127.0.0.1:5183,http://localhost:5183",
+      },
+    });
+
+    expect(options.allowedOrigins).toEqual(
+      new Set(["http://127.0.0.1:5183", "http://localhost:5183"])
+    );
+  });
+
+  it("ignores configured browser origins that are not loopback", () => {
+    const options = createEventServerOptions({
+      processEnv: {
+        ALLOWED_BROWSER_ORIGINS:
+          "https://evil.example,http://127.0.0.1:5183",
+      },
+    });
+
+    expect(options.allowedOrigins).toEqual(
+      new Set(["http://127.0.0.1:5183"])
+    );
+  });
+
   it("exposes the installed Codex skill metadata loader", async () => {
     const loadInstalledSkills = vi.fn(async () => [
       {

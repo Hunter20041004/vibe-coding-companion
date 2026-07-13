@@ -17,6 +17,7 @@
     "companion:stop": "node scripts/companion.js stop",
     "live:codex": "node scripts/live-capture.js codex",
     "live:claude": "node scripts/live-capture.js claude-code",
+    "build": "vite build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

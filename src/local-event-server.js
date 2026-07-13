@@ -48,6 +48,11 @@ export function createLocalEventServer({
   let lastMeaningfulSignal = null;
 
   const requestListener = async (request, response) => {
+    if (!isLoopbackHost(request.headers.host)) {
+      sendJson(response, 403, { error: "invalid_host" });
+      return;
+    }
+
     const origin = request.headers.origin;
     if (!isAllowedOrigin(origin, allowedOrigins)) {
       sendJson(response, 403, { error: "origin_not_allowed" });
@@ -758,6 +763,26 @@ function setCorsHeaders(response, origin) {
 
 function isAllowedOrigin(origin, allowedOrigins) {
   return !origin || allowedOrigins.has(origin);
+}
+
+function isLoopbackHost(hostHeader) {
+  if (!hostHeader) {
+    return false;
+  }
+
+  try {
+    const url = new URL(`http://${hostHeader}`);
+    return (
+      url.username === "" &&
+      url.password === "" &&
+      url.pathname === "/" &&
+      url.search === "" &&
+      url.hash === "" &&
+      ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function sendJson(response, status, payload) {

@@ -39,6 +39,14 @@ npm run dev
 - Vision context 只在使用者按下按鈕後擷取一次；無效圖片不持久化，也不會背景連續監看。
 - 本機 log、測試輸出、環境檔與 runtime artifacts 均由 `.gitignore` 排除。
 
+### 本機服務的安全邊界
+
+- Event server 只監聽 loopback，不對區域網路或網際網路開放。
+- 所有 HTTP 請求都驗證 `Host`，只接受 `127.0.0.1`、`localhost` 與 `::1`，避免 DNS rebinding 繞過本機限制。
+- 瀏覽器請求只接受明確列入允許清單的 Vite 來源，CORS 會回傳精確來源，不使用萬用字元。
+- CLI、hooks 與 Electron overlay 等非瀏覽器 loopback client 不需要偽造 `Origin`，既有事件流程維持不變。
+- API key 與原始 prompt 不會寫入 event log；設定狀態只回傳是否已設定，不回傳 key。
+
 ## Run
 
 ```bash

@@ -1,3 +1,4 @@
+import http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLocalEventServer } from "../src/local-event-server.js";
 
@@ -8,6 +9,35 @@ afterEach(async () => {
     await servers.pop().close();
   }
 });
+
+function requestWithHost(url, host) {
+  const target = new URL(url);
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        hostname: target.hostname,
+        port: target.port,
+        path: target.pathname,
+        headers: { host },
+      },
+      (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+        response.on("end", () => {
+          resolve({
+            status: response.statusCode,
+            body: JSON.parse(body),
+          });
+        });
+      }
+    );
+    request.on("error", reject);
+    request.end();
+  });
+}
 
 describe("Local event server", () => {
   it("rejects disallowed browser origins", async () => {
@@ -28,6 +58,48 @@ describe("Local event server", () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: "origin_not_allowed" });
     expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("rejects requests with a non-loopback Host header", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await requestWithHost(
+      `${server.url()}/healthz`,
+      "attacker.example"
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ error: "invalid_host" });
+  });
+
+  it("rejects malformed Host headers that only begin with a loopback name", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await requestWithHost(
+      `${server.url()}/healthz`,
+      "localhost#attacker.example"
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ error: "invalid_host" });
+  });
+
+  it("accepts a localhost Host header with a numeric port", async () => {
+    const server = createLocalEventServer();
+    servers.push(server);
+    await server.listen(0);
+
+    const response = await requestWithHost(
+      `${server.url()}/healthz`,
+      "localhost:5174"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true });
   });
 
   it("accepts observable events over HTTP and returns events since a cursor", async () => {

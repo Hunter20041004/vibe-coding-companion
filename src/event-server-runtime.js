@@ -32,8 +32,12 @@ export function createEventServerOptions({
     cwd,
     detectForeground,
   });
+  const allowedOrigins = parseAllowedOrigins(
+    processEnv.ALLOWED_BROWSER_ORIGINS
+  );
 
   return {
+    ...(allowedOrigins ? { allowedOrigins } : {}),
     getOverlaySettings,
     saveOverlaySettings: (settings) => writeOverlay({ settings }),
     getPlacementDiagnostic,
@@ -76,4 +80,39 @@ export function createEventServerOptions({
       return analyzer(input);
     },
   };
+}
+
+function parseAllowedOrigins(value) {
+  if (!value) {
+    return null;
+  }
+
+  return new Set(
+    value
+      .split(",")
+      .map((origin) => origin.trim())
+      .map(normalizeLoopbackOrigin)
+      .filter(Boolean)
+  );
+}
+
+function normalizeLoopbackOrigin(origin) {
+  try {
+    const url = new URL(origin);
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
+      url.username ||
+      url.password ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash
+    ) {
+      return null;
+    }
+
+    return url.origin;
+  } catch {
+    return null;
+  }
 }
