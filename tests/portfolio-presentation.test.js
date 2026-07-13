@@ -20,6 +20,7 @@ function assertCiWorkflowContract(source) {
   expect(workflow.name).toBe("CI");
   expect(workflow.on).toEqual({ push: null, pull_request: null });
   expect(workflow.permissions).toEqual({ contents: "read" });
+  expect(workflow.env).toBeUndefined();
   expect(workflow.concurrency).toMatchObject({
     "cancel-in-progress": true,
   });
@@ -32,6 +33,10 @@ function assertCiWorkflowContract(source) {
   expect(job.permissions).toBeUndefined();
   expect(job.services).toBeUndefined();
   expect(job.env).toBeUndefined();
+  for (const step of job.steps) {
+    expect(step["continue-on-error"]).toBeUndefined();
+    expect(step.env).toBeUndefined();
+  }
 
   const actionSteps = job.steps.filter((step) => step.uses);
   expect(actionSteps).toEqual([
@@ -84,6 +89,19 @@ describe("portfolio presentation", () => {
       (workflow) => {
         workflow.jobs.verify.steps.find((step) => step.run === "npm test").run =
           "npm test || true";
+      },
+      (workflow) => {
+        workflow.jobs.verify.steps.find((step) => step.run === "npm test")[
+          "continue-on-error"
+        ] = true;
+      },
+      (workflow) => {
+        workflow.env = { AI_PROVIDER: "enabled" };
+      },
+      (workflow) => {
+        workflow.jobs.verify.steps.find((step) => step.run === "npm test").env = {
+          AI_API_KEY: "placeholder",
+        };
       },
       (workflow) => {
         workflow.jobs.verify.env = {
