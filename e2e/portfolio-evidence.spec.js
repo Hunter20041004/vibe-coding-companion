@@ -6,14 +6,16 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 const PROMPT =
   "fix the failing checkout test; reproduce it, identify the smallest cause, and verify the repair";
 
-test("captures a real diagnose recommendation", async ({ browser }) => {
+test("captures a real diagnose recommendation", async ({ browser, baseURL }) => {
   const videoDirectory = path.join(ROOT, "test-results", "portfolio-video");
   const videoPath = path.join(ROOT, "docs/demo/skill-recommendation.webm");
   const screenshotPath = path.join(ROOT, "docs/screenshots/dashboard.png");
   await fs.mkdir(videoDirectory, { recursive: true });
   await fs.mkdir(path.dirname(videoPath), { recursive: true });
 
+  expect(baseURL).toBeTruthy();
   const context = await browser.newContext({
+    baseURL,
     viewport: { width: 1440, height: 900 },
     recordVideo: {
       dir: videoDirectory,
