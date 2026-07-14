@@ -15,6 +15,13 @@ afterEach(async () => {
 });
 
 describe("Live capture script", () => {
+  it("writes the explicit dry-run result as command output, not a diagnostic log", async () => {
+    const script = await fs.readFile("scripts/live-capture.js", "utf8");
+
+    expect(script).toContain("process.stdout.write");
+    expect(script).not.toMatch(/console\.log\(\s*JSON\.stringify/);
+  });
+
   it("prints a launch plan without starting an agent in dry-run mode", async () => {
     const projectRoot = await makeTempProject();
 

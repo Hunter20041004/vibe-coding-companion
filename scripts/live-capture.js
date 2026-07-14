@@ -20,8 +20,8 @@ const launch = createLiveCaptureLaunch({ provider, projectRoot });
 await fs.mkdir(path.dirname(launch.captureFile), { recursive: true });
 
 if (shouldPrint) {
-  console.log(
-    JSON.stringify(
+  process.stdout.write(
+    `${JSON.stringify(
       {
         hookConfig,
         launch: {
@@ -34,7 +34,7 @@ if (shouldPrint) {
       },
       null,
       2
-    )
+    )}\n`
   );
   process.exit(0);
 }
